@@ -173,17 +173,22 @@
         return item.target > 0 ? item.stocked / item.target : 1;
     }
 
+    var BURN_WINDOW_DAYS = 30;
+
     /**
      * 최근 소비 속도(개/일).
      *
      * 감소분만 더한다 — 보급이 들어온 계단은 소비가 아니므로 빼고 세야 실제 소진 속도가 나온다.
-     * 창은 7일. 더 짧으면 전투 한 번에 출렁이고, 더 길면 최근 변화를 못 따라간다.
+     * 창은 30일. 7일로 뒀더니 실제 보급 주기(며칠~십여 일 간격)보다 짧아서, 마침 보급
+     * 직후에 보면 최근 7일이 거의 안 줄어든 것처럼 보여 소진 예상일이 실제보다 훨씬
+     * 여유 있게 나오는 문제가 있었다. 30일이면 보급 주기 한두 바퀴가 창 안에 들어와
+     * 안정적이다.
      */
     function burnRate(item) {
         var h = item.history || [];
         if (h.length < 2) return 0;
         var perDay = (24 * 60 * 60 * 1000) / state.sampleMs;
-        var from = Math.max(0, h.length - Math.round(perDay * 7));
+        var from = Math.max(0, h.length - Math.round(perDay * BURN_WINDOW_DAYS));
         var drop = 0;
         for (var i = from + 1; i < h.length; i++) {
             if (h[i] < h[i - 1]) drop += h[i - 1] - h[i];
