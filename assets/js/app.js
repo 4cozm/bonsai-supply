@@ -450,8 +450,34 @@
         window.removeEventListener("pointerup", onDragUp);
         window.removeEventListener("pointercancel", onDragCancel);
         document.body.classList.remove("is-dragging");
-        if (open && !started.moved) openDetail(started.item);
+
+        if (started.moved) {
+            // 포인터가 누른 요소를 벗어나지 않았다면 브라우저가 click 을 마저 쏜다.
+            // 체크박스라면 방금 드래그로 정한 값을 되돌리고, 이름이라면 모달을 연다.
+            // 그 click 은 pointerup 직후 같은 태스크에서 오므로, 다음 태스크에 플래그를 턴다.
+            // 벗어난 경우엔 click 이 아예 오지 않는데, 그때 플래그가 남으면
+            // 이후의 멀쩡한 클릭(키보드 포함)이 먹힌다.
+            suppressNextClick = true;
+            setTimeout(function () {
+                suppressNextClick = false;
+            }, 0);
+            return;
+        }
+        // 움직이지 않았다 = 클릭. 체크박스와 이름 버튼은 자기 핸들러가 처리하므로 비켜 준다.
+        if (open && !started.fromPick && !started.fromName) openDetail(started.item);
     }
+
+    var suppressNextClick = false;
+    el.rows.addEventListener(
+        "click",
+        function (e) {
+            if (!suppressNextClick) return;
+            suppressNextClick = false;
+            e.preventDefault();
+            e.stopPropagation();
+        },
+        true // 캡처 단계 — 체크박스/버튼의 핸들러보다 먼저 잡아야 한다
+    );
 
     function onDragMove(e) {
         if (!drag) return;
@@ -495,10 +521,14 @@
         // 터치는 세로 드래그가 스크롤이다. 뺏으면 목록을 못 넘긴다.
         if (e.pointerType === "touch") return;
 
+        // 직전 드래그에서 세워 둔 억제 플래그를 여기서 턴다. 포인터가 누른 요소를 벗어나면
+        // click 이 아예 오지 않아 플래그가 남고, 그러면 다음 정상 클릭이 먹힌다.
+        suppressNextClick = false;
+
         var tr = e.target.closest ? e.target.closest("tr.row") : null;
         if (!tr || !tr.__item) return;
-        // 체크박스·목표 입력·품목명 버튼 위에서 시작한 제스처는 그쪽 몫이다.
-        if (e.target.closest("input, button")) return;
+        // 목표 수량 입력만 제외한다. 여기서 끄는 건 숫자 선택이지 행 선택이 아니다.
+        if (e.target.closest(".target")) return;
 
         var item = tr.__item;
         drag = {
@@ -507,6 +537,9 @@
             moved: false,
             item: item,
             mode: isShort(item) ? !included(item) : null,
+            // 이 둘은 자기 클릭 동작이 따로 있다. 드래그가 아니었다면 그쪽에 맡긴다.
+            fromPick: !!e.target.closest(".pick"),
+            fromName: !!e.target.closest("button.name"),
         };
         window.addEventListener("pointermove", onDragMove);
         window.addEventListener("pointerup", onDragUp);
