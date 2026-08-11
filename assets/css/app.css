@@ -907,6 +907,11 @@ select.field__input {
     border: 1px solid var(--amber);
     background: color-mix(in srgb, var(--amber) 8%, var(--hull));
 }
+/* 작성자 스타일이 항상 UA 스타일(`[hidden]{display:none}`)을 이긴다 — 위 display:flex 를
+   그대로 두면 hidden 속성이 무시되어 "0건" 상태가 계속 떠 있는다. 명시적으로 되짚어 준다. */
+.pending[hidden] {
+    display: none;
+}
 
 .pending__msg {
     margin: 0;
