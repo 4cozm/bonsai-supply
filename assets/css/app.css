@@ -693,6 +693,10 @@ select.field__input {
 .mtbl__n {
     width: 70px;
 }
+.mtbl th.mtbl__n:nth-child(3),
+.mtbl td.mtbl__n:nth-child(3) {
+    width: 84px; /* 부피 열 — " m³" 단위까지 붙어 70px 로는 큰 수(90,000 m³)가 잘렸다 */
+}
 .mtbl th.mtbl__n:nth-child(4),
 .mtbl td.mtbl__n:nth-child(4) {
     width: 82px; /* 비용 열 — 단가 줄까지 있어 조금 더 넓게 */
@@ -1461,7 +1465,11 @@ select.field__input {
         padding: 6px 6px;
     }
     .mtbl__n {
-        width: 46px;
+        width: 40px; /* 수량은 대체로 자릿수가 작다 — 부피·비용 열에 폭을 양보한다 */
+    }
+    .mtbl th.mtbl__n:nth-child(3),
+    .mtbl td.mtbl__n:nth-child(3) {
+        width: 68px; /* 부피 열 — " m³" 단위 포함 */
     }
     .mtbl th.mtbl__n:nth-child(4),
     .mtbl td.mtbl__n:nth-child(4) {

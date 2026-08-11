@@ -1309,7 +1309,7 @@
 
         var tdVol = document.createElement("td");
         tdVol.className = "mtbl__n";
-        tdVol.textContent = volume(manifestLineVolume(item));
+        tdVol.textContent = volume(manifestLineVolume(item)) + " m³";
         tr.appendChild(tdVol);
 
         var tdCost = document.createElement("td");
