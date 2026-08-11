@@ -32,7 +32,7 @@
         items: [],
         filter: "short",
         query: "",
-        excluded: new Set(), // 기본은 "부족분 전부 포함", 사용자가 뺀 것만 기록한다
+        included: new Set(), // 기본은 "전부 미포함", 사용자가 고른 것만 기록한다
         unitPrices: {},
         priceSource: "—",
         baseTarget: {}, // 저장 전 원래 목표 수량. 키가 있으면 곧 "변경됨"이다.
@@ -149,7 +149,7 @@
     }
 
     function included(item) {
-        return isShort(item) && !state.excluded.has(item.name);
+        return isShort(item) && state.included.has(item.name);
     }
 
     function ratioOf(item) {
@@ -556,14 +556,13 @@
         if (!isShort(item)) return false;
         if (included(item) === on) return false;
 
-        if (on) state.excluded.delete(item.name);
-        else state.excluded.add(item.name);
+        if (on) state.included.add(item.name);
+        else state.included.delete(item.name);
 
         var tr = rowFor(item);
         if (tr) {
             var box = tr.querySelector(".pick");
             if (box) box.checked = on;
-            tr.classList.toggle("is-out", !on);
         }
         return true;
     }
@@ -1006,7 +1005,7 @@
     function buildRow(item, index) {
         var short = deficit(item);
         var tr = document.createElement("tr");
-        tr.className = "row" + (short && state.excluded.has(item.name) ? " is-out" : "");
+        tr.className = "row";
         tr.__item = item; // 포인터 제스처가 행 → 품목을 되짚을 때 쓴다
 
         // 포함 토글
