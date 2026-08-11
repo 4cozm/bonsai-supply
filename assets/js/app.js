@@ -398,6 +398,112 @@
         });
     }
 
+    /* ── 선택 제스처: 클릭 = 상세, 드래그 = 다중 선택 ───── */
+
+    var DRAG_THRESHOLD = 5; // px. 이 아래면 손떨림으로 보고 클릭으로 친다.
+    var drag = null;
+
+    function rowFor(item) {
+        var rows = el.rows.children;
+        for (var i = 0; i < rows.length; i++) {
+            if (rows[i].__item === item) return rows[i];
+        }
+        return null;
+    }
+
+    /**
+     * 포함 여부를 바꾸고 **해당 행만** 갱신한다.
+     * 드래그 중에 전체 재렌더를 돌리면 커서 아래 DOM이 매 틱 교체되어
+     * elementFromPoint 가 헛짚고 깜빡임도 생긴다.
+     * @returns {boolean} 실제로 바뀌었으면 true
+     */
+    function applyInclusion(item, on) {
+        if (!isShort(item)) return false;
+        if (included(item) === on) return false;
+
+        if (on) state.excluded.delete(item.name);
+        else state.excluded.add(item.name);
+
+        var tr = rowFor(item);
+        if (tr) {
+            var box = tr.querySelector(".pick");
+            if (box) box.checked = on;
+            tr.classList.toggle("is-out", !on);
+        }
+        return true;
+    }
+
+    function endDrag(open) {
+        if (!drag) return;
+        var started = drag;
+        drag = null;
+        window.removeEventListener("pointermove", onDragMove);
+        window.removeEventListener("pointerup", onDragUp);
+        window.removeEventListener("pointercancel", onDragCancel);
+        document.body.classList.remove("is-dragging");
+        if (open && !started.moved) openDetail(started.item);
+    }
+
+    function onDragMove(e) {
+        if (!drag) return;
+
+        if (!drag.moved) {
+            if (
+                Math.abs(e.clientX - drag.x) < DRAG_THRESHOLD &&
+                Math.abs(e.clientY - drag.y) < DRAG_THRESHOLD
+            ) {
+                return;
+            }
+            drag.moved = true;
+            document.body.classList.add("is-dragging");
+            // 시작한 행의 토글은 여기까지 미뤄 뒀다 — 눌렀다 뗀 것뿐이면 클릭(상세)이어야 하므로.
+            // 드래그로 확정된 지금 되짚어 반영한다.
+            if (drag.mode !== null && applyInclusion(drag.item, drag.mode)) renderManifest();
+        }
+
+        var under = document.elementFromPoint(e.clientX, e.clientY);
+        var tr = under && under.closest ? under.closest("tr.row") : null;
+        if (!tr || !tr.__item) return;
+
+        var item = tr.__item;
+        if (!isShort(item)) return; // 충족 품목은 매니페스트에 들어갈 수 없다
+
+        // 처음 닿은 부족 품목이 모드를 정한다 — RimWorld 와 같은 규칙.
+        if (drag.mode === null) drag.mode = !included(item);
+        if (applyInclusion(item, drag.mode)) renderManifest();
+    }
+
+    function onDragUp() {
+        endDrag(true);
+    }
+
+    function onDragCancel() {
+        endDrag(false);
+    }
+
+    el.rows.addEventListener("pointerdown", function (e) {
+        if (e.button !== 0) return;
+        // 터치는 세로 드래그가 스크롤이다. 뺏으면 목록을 못 넘긴다.
+        if (e.pointerType === "touch") return;
+
+        var tr = e.target.closest ? e.target.closest("tr.row") : null;
+        if (!tr || !tr.__item) return;
+        // 체크박스·목표 입력·품목명 버튼 위에서 시작한 제스처는 그쪽 몫이다.
+        if (e.target.closest("input, button")) return;
+
+        var item = tr.__item;
+        drag = {
+            x: e.clientX,
+            y: e.clientY,
+            moved: false,
+            item: item,
+            mode: isShort(item) ? !included(item) : null,
+        };
+        window.addEventListener("pointermove", onDragMove);
+        window.addEventListener("pointerup", onDragUp);
+        window.addEventListener("pointercancel", onDragCancel);
+    });
+
     /* ── 상세 모달: 전체 추이 그래프 ────────────────────── */
 
     var modal = {
@@ -604,6 +710,7 @@
         var short = deficit(item);
         var tr = document.createElement("tr");
         tr.className = "row" + (short && state.excluded.has(item.name) ? " is-out" : "");
+        tr.__item = item; // 포인터 제스처가 행 → 품목을 되짚을 때 쓴다
 
         // 포함 토글
         var tdPick = document.createElement("td");
@@ -615,9 +722,8 @@
             box.checked = included(item);
             box.setAttribute("aria-label", item.name + " 매니페스트에 포함");
             box.addEventListener("change", function () {
-                if (box.checked) state.excluded.delete(item.name);
-                else state.excluded.add(item.name);
-                render();
+                applyInclusion(item, box.checked);
+                renderManifest();
             });
             tdPick.appendChild(box);
         }

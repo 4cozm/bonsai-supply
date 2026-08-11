@@ -375,8 +375,8 @@ select.field__input {
     object-fit: cover;
 }
 
-/* 품목명이 상세 모달의 클릭 지점이다. 행 전체를 누르게 하면 체크박스·목표 입력과 충돌하고
-   텍스트 선택도 방해한다. 버튼으로 두면 키보드 접근이 공짜로 따라온다. */
+/* 행 어디를 눌러도 상세가 열린다. 품목명은 버튼으로 남겨 뒀는데, 행 클릭은 마우스 전용이라
+   키보드 사용자에게는 이게 유일한 진입점이기 때문이다. */
 .name {
     display: block;
     padding: 0;
@@ -388,10 +388,19 @@ select.field__input {
     text-align: left;
     cursor: pointer;
 }
-.name:hover {
+.tbl tbody tr.row:hover .name {
     color: var(--teal);
-    text-decoration: underline;
-    text-underline-offset: 3px;
+}
+
+.row {
+    cursor: pointer;
+}
+
+/* 드래그로 여러 행을 훑는 동안 텍스트가 선택되면 시야를 가린다. */
+.is-dragging,
+.is-dragging .row {
+    user-select: none;
+    cursor: cell;
 }
 
 .group {
