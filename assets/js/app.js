@@ -37,6 +37,7 @@
         priceSource: "—",
         sampledAt: Date.now(),
         sampleMs: 10 * 60 * 1000,
+        sparkPoints: 144, // 표의 스파크라인이 그리는 표본 수 (24시간 / 10분)
         firstPaint: true,
     };
 
@@ -167,12 +168,13 @@
         // API 연결 시 이 함수만 fetch("/api/stock") 로 교체한다.
         var mock = window.BONSAI_MOCK || { items: [] };
         if (el.sync && mock.syncedAt) el.sync.textContent = mock.syncedAt;
-        if (el.historyWindow && mock.historyHours) {
-            el.historyWindow.textContent = String(mock.historyHours);
-        }
         if (mock.sampleMinutes) {
             state.sampleMs = mock.sampleMinutes * 60 * 1000;
             if (el.sampleMinutes) el.sampleMinutes.textContent = String(mock.sampleMinutes);
+        }
+        if (mock.sparkHours) {
+            state.sparkPoints = Math.round((mock.sparkHours * 60) / (mock.sampleMinutes || 10));
+            if (el.historyWindow) el.historyWindow.textContent = String(mock.sparkHours);
         }
         if (mock.sampledAt) state.sampledAt = new Date(mock.sampledAt).getTime();
         if (el.hangar && mock.hangar) {
@@ -263,8 +265,11 @@
         svg.setAttribute("role", "img");
         svg.style.setProperty("--fill", rampColor(ratioOf(item)));
 
-        var data = item.history;
-        if (!data || data.length < 2) {
+        // 전체 히스토리는 모달용이고, 표의 스파크라인은 최근 구간만 보여 준다.
+        var all = item.history || [];
+        var from = Math.max(0, all.length - state.sparkPoints);
+        var data = all.slice(from);
+        if (data.length < 2) {
             svg.setAttribute("aria-label", "추이 기록 없음");
             return svg;
         }
@@ -306,7 +311,7 @@
         dot.setAttribute("r", "1.8");
         svg.appendChild(dot);
 
-        attachSparkHover(svg, item, data, pts);
+        attachSparkHover(svg, item, data, pts, from);
 
         var change = data[data.length - 1] - data[0];
         svg.setAttribute(
@@ -324,22 +329,26 @@
 
     var tip = document.querySelector("[data-tip]");
 
-    /** 마지막 표본이 "지금"이고, 한 칸 왼쪽이 sampleMinutes 만큼 과거다. */
-    function timeAt(index, length) {
-        return new Date(state.sampledAt - (length - 1 - index) * state.sampleMs);
+    /**
+     * 전체 히스토리 기준 절대 인덱스 → 시각. 마지막 표본이 "지금"이다.
+     * 구간을 잘라 그릴 때도 시각이 흔들리지 않도록 항상 전체 길이를 기준으로 센다.
+     */
+    function timeAt(absIndex, item) {
+        var total = (item.history || []).length;
+        return new Date(state.sampledAt - (total - 1 - absIndex) * state.sampleMs);
     }
 
-    function showTip(clientX, rect, item, index, data) {
+    function showTip(clientX, rect, item, absIndex, value) {
         tip.textContent = "";
         tip.style.setProperty("--fill", rampColor(ratioOf(item)));
 
         var when = document.createElement("span");
         when.className = "tip__when";
-        when.textContent = whenLabel(timeAt(index, data.length));
+        when.textContent = whenLabel(timeAt(absIndex, item));
 
         var qty = document.createElement("span");
         qty.className = "tip__qty";
-        qty.textContent = "  " + num(data[index]) + "개";
+        qty.textContent = "  " + num(value) + "개";
 
         tip.appendChild(when);
         tip.appendChild(qty);
@@ -358,7 +367,7 @@
         tip.hidden = true;
     }
 
-    function attachSparkHover(svg, item, data, pts) {
+    function attachSparkHover(svg, item, data, pts, from) {
         var ns = "http://www.w3.org/2000/svg";
 
         var guide = document.createElementNS(ns, "line");
@@ -388,7 +397,7 @@
             hit.setAttribute("cy", pts[i][1].toFixed(1));
             hit.style.display = "";
 
-            showTip(e.clientX, rect, item, i, data);
+            showTip(e.clientX, rect, item, from + i, data[i]);
         });
 
         svg.addEventListener("pointerleave", function () {
@@ -516,11 +525,17 @@
         short: document.querySelector("[data-modal-short]"),
         delta: document.querySelector("[data-modal-delta]"),
         chart: document.querySelector("[data-modal-chart]"),
+        cap: document.querySelector("[data-modal-cap]"),
         close: document.querySelector("[data-modal-close]"),
+        presets: [].slice.call(document.querySelectorAll("[data-range]")),
+        dateFrom: document.querySelector("[data-range-from]"),
+        dateTo: document.querySelector("[data-range-to]"),
     };
+    modal.deltaLabel = modal.delta.previousElementSibling; // "24시간 변화" dt
 
     var CHART_H = 240;
     var PAD = { top: 14, right: 12, bottom: 24, left: 46 };
+    var DAY_MS = 24 * 60 * 60 * 1000;
 
     function svgEl(tag, attrs) {
         var e = document.createElementNS("http://www.w3.org/2000/svg", tag);
@@ -528,18 +543,72 @@
         return e;
     }
 
+    /* ── 기간 선택 ──────────────────────────────────────── */
+
+    var range = { preset: "7", from: 0, to: 0 };
+
+    function totalPoints(item) {
+        return (item.history || []).length;
+    }
+
+    /** 프리셋(일수 또는 "all") → 절대 인덱스 구간 */
+    function presetRange(item, preset) {
+        var total = totalPoints(item);
+        if (preset === "all") return { from: 0, to: total - 1 };
+        var pts = Math.round((Number(preset) * DAY_MS) / state.sampleMs);
+        return { from: Math.max(0, total - pts), to: total - 1 };
+    }
+
+    /**
+     * 시각 → 절대 인덱스. 반올림하면 고른 날짜 밖의 표본을 집는다 —
+     * 6/15 까지 골랐는데 캡션이 6/16 00:00 으로 뜨는 식이다.
+     * @param {Function} round Math.floor(시작: 그 시각 이후 첫 표본) 또는 Math.ceil(종료: 그 시각 이전 마지막 표본)
+     */
+    function indexForTime(ms, item, round) {
+        var total = totalPoints(item);
+        var idx = total - 1 - (round || Math.round)((state.sampledAt - ms) / state.sampleMs);
+        return Math.max(0, Math.min(total - 1, idx));
+    }
+
+    function dateInputValue(d) {
+        var p = function (n) {
+            return (n < 10 ? "0" : "") + n;
+        };
+        return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
+    }
+
+    /**
+     * 화면 폭보다 표본이 많으면 그대로 그릴 이유가 없다. 90일이면 12,960점인데
+     * 700px 짜리 그래프에 다 밀어 넣으면 한 픽셀에 열여덟 점이 겹친다.
+     * 절대 인덱스를 함께 들고 다녀야 hover 시각이 맞는다.
+     */
+    function sampleRange(item, from, to, maxPoints) {
+        var h = item.history;
+        var n = to - from + 1;
+        var stride = Math.max(1, Math.ceil(n / maxPoints));
+        var out = [];
+        for (var i = from; i <= to; i += stride) out.push({ abs: i, v: h[i] });
+        if (!out.length || out[out.length - 1].abs !== to) out.push({ abs: to, v: h[to] });
+        return out;
+    }
+
     /**
      * 큰 추이 차트. 스파크라인과 달리 축과 목표선을 함께 그린다 —
      * "얼마나 남았나"가 아니라 "목표선 아래로 언제 내려갔나"를 읽는 그림이다.
      */
     function buildChart(item, CHART_W) {
-        var data = item.history || [];
         var wrap = document.createElement("div");
-        if (data.length < 2) {
+        if (totalPoints(item) < 2 || range.to - range.from < 1) {
             wrap.className = "empty";
-            wrap.textContent = "추이 기록이 없습니다.";
+            wrap.textContent = "선택한 기간에 기록이 없습니다.";
             return wrap;
         }
+
+        // 한 픽셀에 한 점이면 충분하다. 90일 12,960점을 다 그릴 이유가 없다.
+        var samples = sampleRange(item, range.from, range.to, Math.max(120, Math.round(CHART_W)));
+        var data = samples.map(function (s) {
+            return s.v;
+        });
 
         var color = rampColor(ratioOf(item));
         // viewBox 폭을 실제 렌더 폭에 맞춘다. 고정 폭 viewBox를 늘려 쓰면 축 라벨 텍스트가
@@ -612,16 +681,18 @@
             svg.appendChild(tl);
         }
 
-        // 시간 눈금 4개
+        // 시간 눈금 4개. 구간이 이틀을 넘으면 시:분은 노이즈라 날짜만 남긴다.
+        var spanMs = (range.to - range.from) * state.sampleMs;
         [0, 0.33, 0.66, 1].forEach(function (f) {
             var i = Math.round(f * (data.length - 1));
+            var d = timeAt(samples[i].abs, item);
             var t = svgEl("text", {
                 class: "chart__label",
                 x: xAt(i),
                 y: CHART_H - PAD.bottom + 15,
                 "text-anchor": f === 0 ? "start" : f === 1 ? "end" : "middle",
             });
-            t.textContent = whenLabel(timeAt(i, data.length));
+            t.textContent = spanMs > 2 * DAY_MS ? d.getMonth() + 1 + "/" + d.getDate() : whenLabel(d);
             svg.appendChild(t);
         });
 
@@ -645,7 +716,7 @@
             dot.setAttribute("cx", pts[i][0]);
             dot.setAttribute("cy", pts[i][1]);
             dot.style.display = "";
-            showTip(e.clientX, rect, item, i, data);
+            showTip(e.clientX, rect, item, samples[i].abs, data[i]);
         });
         svg.addEventListener("pointerleave", function () {
             guide.style.display = "none";
@@ -658,8 +729,6 @@
     }
 
     function openDetail(item) {
-        var data = item.history || [];
-        var change = data.length > 1 ? data[data.length - 1] - data[0] : 0;
         var short = deficit(item);
 
         modal.icon.src = iconSrc(item);
@@ -673,8 +742,10 @@
         modal.target.textContent = num(item.target);
         modal.short.textContent = short ? "−" + num(short) : "충족";
         modal.short.className = "stat__v " + (short ? "short" : "ok");
-        modal.delta.textContent = (change > 0 ? "+" : change < 0 ? "−" : "") + num(Math.abs(change));
-        modal.delta.style.color = change < 0 ? "var(--amber)" : change > 0 ? "var(--high)" : "";
+
+        // 모달을 열 때마다 기본 구간으로 되돌린다 — 직전 품목에서 좁혀 둔 범위가
+        // 다음 품목에 따라붙으면 무엇을 보고 있는지 헷갈린다.
+        setPreset(item, "7");
 
         // 차트는 모달을 연 뒤에 그린다 — 닫힌 dialog 는 폭이 0이라 viewBox 를 맞출 수 없다.
         modal.root.showModal();
@@ -688,7 +759,74 @@
         var w = Math.round(modal.chart.clientWidth) || 700;
         modal.chart.textContent = "";
         modal.chart.appendChild(buildChart(item, w));
+
+        // 구간 안에서의 변화량 — 상단 통계는 "지금 보고 있는 기간" 기준이어야 한다.
+        var h = item.history || [];
+        var change = h.length > 1 ? h[range.to] - h[range.from] : 0;
+        modal.delta.textContent = (change > 0 ? "+" : change < 0 ? "−" : "") + num(Math.abs(change));
+        modal.delta.style.color = change < 0 ? "var(--amber)" : change > 0 ? "var(--high)" : "";
+
+        var days = Math.max(1, Math.round(((range.to - range.from) * state.sampleMs) / DAY_MS));
+        modal.deltaLabel.textContent = days + "일 변화";
+        modal.cap.textContent =
+            whenLabel(timeAt(range.from, item)) +
+            " – " +
+            whenLabel(timeAt(range.to, item)) +
+            " · 10분 간격 · 점선은 목표 수량";
     }
+
+    /** 프리셋 버튼 상태와 날짜 입력을 함께 맞춘다 — 지금 보는 구간이 날짜로도 읽혀야 한다. */
+    function setPreset(item, preset) {
+        range.preset = preset;
+        var r = presetRange(item, preset);
+        range.from = r.from;
+        range.to = r.to;
+        syncRangeControls(item);
+    }
+
+    function syncRangeControls(item) {
+        modal.presets.forEach(function (b) {
+            var on = b.getAttribute("data-range") === range.preset;
+            b.classList.toggle("is-on", on);
+            b.setAttribute("aria-pressed", String(on));
+        });
+        var lo = timeAt(0, item);
+        var hi = timeAt(totalPoints(item) - 1, item);
+        modal.dateFrom.min = modal.dateTo.min = dateInputValue(lo);
+        modal.dateFrom.max = modal.dateTo.max = dateInputValue(hi);
+        modal.dateFrom.value = dateInputValue(timeAt(range.from, item));
+        modal.dateTo.value = dateInputValue(timeAt(range.to, item));
+    }
+
+    function applyDateRange() {
+        if (!openItem) return;
+        var a = modal.dateFrom.value ? new Date(modal.dateFrom.value + "T00:00:00") : null;
+        var b = modal.dateTo.value ? new Date(modal.dateTo.value + "T23:59:59") : null;
+        if (!a || !b || isNaN(a) || isNaN(b)) return;
+
+        var from = indexForTime(a.getTime(), openItem, Math.floor);
+        var to = indexForTime(b.getTime(), openItem, Math.ceil);
+        if (to <= from) return; // 뒤집힌 범위는 무시한다 — 조용히 고쳐 놓으면 더 헷갈린다
+
+        range.from = from;
+        range.to = to;
+        range.preset = null; // 직접 고른 구간이므로 어떤 프리셋도 켜지 않는다
+        modal.presets.forEach(function (btn) {
+            btn.classList.remove("is-on");
+            btn.setAttribute("aria-pressed", "false");
+        });
+        drawChart(openItem);
+    }
+
+    modal.presets.forEach(function (btn) {
+        btn.addEventListener("click", function () {
+            if (!openItem) return;
+            setPreset(openItem, btn.getAttribute("data-range"));
+            drawChart(openItem);
+        });
+    });
+    modal.dateFrom.addEventListener("change", applyDateRange);
+    modal.dateTo.addEventListener("change", applyDateRange);
 
     // 창 크기가 바뀌면 viewBox 폭이 어긋나므로 다시 그린다.
     window.addEventListener("resize", function () {

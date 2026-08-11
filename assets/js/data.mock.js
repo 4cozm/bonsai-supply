@@ -13,8 +13,9 @@
     "use strict";
 
     var SAMPLE_MINUTES = 10;
-    var HISTORY_HOURS = 24;
-    var POINTS = (HISTORY_HOURS * 60) / SAMPLE_MINUTES; // 144
+    var HISTORY_DAYS = 90; // 모달의 "전체" 범위
+    var SPARK_HOURS = 24; // 표의 작은 스파크라인이 보여 주는 구간
+    var POINTS = (HISTORY_DAYS * 24 * 60) / SAMPLE_MINUTES; // 12,960
 
     /* 고정 시드 PRNG — 새로고침해도 그래프가 요동치지 않게 한다. */
     function mulberry32(seed) {
@@ -28,21 +29,31 @@
     }
 
     /**
-     * 24시간치 소비 곡선을 만든다. 대체로 우하향하되, 가끔 보급이 들어와 계단식으로 튄다.
+     * 90일치 소비 곡선. 서서히 닳다가 보급이 들어오면 계단식으로 차오르는 사이클을 반복한다.
      * 마지막 값은 반드시 현재 보유량과 같다.
      */
     function makeHistory(seed, endValue, target) {
         var rand = mulberry32(seed);
-        var restockTo = Math.max(endValue, Math.round(target * (0.7 + rand() * 0.5)));
+        var ceiling = Math.max(endValue, Math.round(target * (0.85 + rand() * 0.45)));
+        // 보급 주기는 품목마다 다르게 — 3~12일에 한 번쯤 채운다.
+        var restockEvery = Math.round((3 + rand() * 9) * 24 * (60 / SAMPLE_MINUTES));
+        // 한 보급 주기 동안 대략 ceiling 만큼 빠지도록 소비 폭을 맞춘다.
+        // 이 비율이 어긋나면 곡선이 곧장 바닥에 붙어 90일 내내 0만 보인다.
+        var drainRate = ceiling / restockEvery;
         var series = new Array(POINTS);
-        var value = restockTo;
+        // 소수로 누적해야 Muninn 처럼 수량이 한 자리인 품목도 실제로 줄어든다.
+        // 정수로 깎으면 반올림에 먹혀 영영 그대로다.
+        var value = ceiling;
 
         for (var i = 0; i < POINTS; i++) {
-            var drain = rand() < 0.62 ? Math.round(rand() * (restockTo / POINTS) * 2.6) : 0;
-            value = Math.max(0, value - drain);
-            // 드물게 보급이 들어온다
-            if (rand() < 0.02) value = Math.min(restockTo, value + Math.round(restockTo * 0.3));
-            series[i] = value;
+            // 소비는 띄엄띄엄 일어난다 — 전투가 있는 날만 빠진다.
+            if (rand() < 0.18) {
+                value = Math.max(0, value - rand() * drainRate * 11);
+            }
+            if (i > 0 && i % restockEvery === 0) {
+                value = Math.min(ceiling, value + ceiling * (0.5 + rand() * 0.5));
+            }
+            series[i] = Math.round(value);
         }
         series[POINTS - 1] = endValue;
         return series;
@@ -86,7 +97,8 @@
         syncedAt: "4분 전 동기화",
         sampledAt: now.toISOString(),
         sampleMinutes: SAMPLE_MINUTES,
-        historyHours: HISTORY_HOURS,
+        sparkHours: SPARK_HOURS,
+        historyDays: HISTORY_DAYS,
         items: items,
     };
 })();

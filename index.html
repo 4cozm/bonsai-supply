@@ -153,11 +153,28 @@
                 </div>
             </dl>
 
+            <div class="range">
+                <div class="segbtn" role="group" aria-label="기간">
+                    <button class="segbtn__b" type="button" data-range="1">1일</button>
+                    <button class="segbtn__b is-on" type="button" data-range="7">7일</button>
+                    <button class="segbtn__b" type="button" data-range="30">30일</button>
+                    <button class="segbtn__b" type="button" data-range="all">전체</button>
+                </div>
+                <div class="range__dates">
+                    <label class="field">
+                        <span class="field__label">시작</span>
+                        <input class="field__input" type="date" data-range-from />
+                    </label>
+                    <label class="field">
+                        <span class="field__label">종료</span>
+                        <input class="field__input" type="date" data-range-to />
+                    </label>
+                </div>
+            </div>
+
             <figure class="modal__chart">
                 <div class="chart" data-modal-chart></div>
-                <figcaption class="modal__cap">
-                    10분 간격 재고 로그 · 점선은 목표 수량
-                </figcaption>
+                <figcaption class="modal__cap" data-modal-cap></figcaption>
             </figure>
         </dialog>
 

@@ -794,6 +794,27 @@ select.field__input {
     font-variant-numeric: tabular-nums;
 }
 
+.range {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 16px;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--edge);
+}
+
+.range__dates {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+}
+.range__dates .field__input {
+    width: auto;
+    min-width: 128px;
+}
+
 .modal__chart {
     margin: 0;
     padding: 16px;
