@@ -200,7 +200,7 @@ select.field__input {
 /* ── 페이지 ────────────────────────────────────────────── */
 
 .page {
-    max-width: 1320px;
+    max-width: 1440px;
     margin: 0 auto;
     padding: 32px var(--gut) 72px;
 }
@@ -209,7 +209,10 @@ select.field__input {
 
 .grid {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 340px;
+    /* 매니페스트가 표(아이콘·수량·부피·비용)로 바뀌면서 340px 로는 옆으로 슬라이드해야만
+       다 보였다. 460px 로 넓혀 웬만한 품목명은 그대로 들어가게 했다 — 그래도 못 들어가는
+       긴 이름은 .mname 의 ellipsis 가 안전망으로 잘라낸다. */
+    grid-template-columns: minmax(0, 1fr) 460px;
     gap: 28px;
     align-items: start;
     margin-top: 4px;
@@ -654,10 +657,30 @@ select.field__input {
     background: var(--void);
 }
 
+/* table-layout:fixed 로 열 폭을 CSS 가 정한다 — auto 레이아웃은 셀 콘텐츠에 맞춰
+   표 전체를 늘리므로, 긴 품목명(예: "Scourge Rage Heavy Assault Missile") 하나가
+   전체 폭을 밀어서 가로 스크롤을 만들었다. 숫자 열은 폭을 고정하고, 품목 열만
+   남는 공간을 가져가며 .mname 의 ellipsis 로 잘라낸다. */
 .mtbl {
     width: 100%;
-    border-collapse: collapse;
+    table-layout: fixed;
+    /* collapse 는 fixed 레이아웃과 맞물려 5열 폭 배분에 몇 px 서브픽셀 반올림 오차를
+       남긴다(실제로 잘리는 콘텐츠는 없지만 스크롤 가능 범위가 생긴다) — separate 로 바꾸면
+       그 오차가 없어진다. 헤어라인은 셀 보더로 여전히 그려지므로 시각적 차이는 없다. */
+    border-collapse: separate;
+    border-spacing: 0;
     font-size: 12.5px;
+}
+
+.mtbl__item {
+    width: auto;
+}
+.mtbl__n {
+    width: 70px;
+}
+.mtbl th.mtbl__n:nth-child(4),
+.mtbl td.mtbl__n:nth-child(4) {
+    width: 82px; /* 비용 열 — 단가 줄까지 있어 조금 더 넓게 */
 }
 
 .mtbl th {
@@ -698,7 +721,13 @@ select.field__input {
     white-space: nowrap;
 }
 .mtbl__drop {
-    width: 26px;
+    width: 30px;
+}
+/* mdrop 버튼이 20px 인데 표 공통 셀 패딩(10px 씩)까지 더하면 26px 열엔 안 들어간다 —
+   이게 실제 4px 오버플로의 원인이었다. 이 열만 패딩을 줄여 버튼을 넉넉히 담는다. */
+.mtbl td.mtbl__drop {
+    padding-left: 4px;
+    padding-right: 4px;
 }
 
 .mrow__item {
@@ -1276,8 +1305,11 @@ select.field__input {
 /* ── 반응형 ────────────────────────────────────────────── */
 
 /* 표에 열이 늘어난 뒤로는 사이드 매니페스트와 나란히 두면 이름 열이 뭉개진다.
-   한 열로 접는 분기점을 그만큼 올렸다. */
-@media (max-width: 1240px) {
+   한 열로 접는 분기점을 그만큼 올렸다. 매니페스트가 표(수량·부피·비용)로 바뀌면서
+   사이드바를 460px 로 넓혔는데, 그 폭을 빼고 나면 1240~1300px 사이에서는 재고 표
+   쪽이 옹색해져(최대 110px 내부 스크롤) 되레 반대편이 좁아진다. 그 구간은 아예
+   한 열로 접어 둘 다 전체 폭을 쓰게 한다. */
+@media (max-width: 1320px) {
     .grid {
         grid-template-columns: minmax(0, 1fr);
     }
@@ -1398,5 +1430,36 @@ select.field__input {
     }
     .stat {
         padding: 0 14px;
+    }
+
+    /* 매니페스트 표 — 데스크톱 사이드바 폭(520px)에 맞춘 고정 열 폭을 그대로 쓰면
+       375px 화면에서 품목명이 6~7글자로 잘린다. 아이콘을 접고 숫자 열을 더 줄여
+       이름에 폭을 돌려준다. */
+    .micon {
+        display: none;
+    }
+    .mtbl {
+        font-size: 11.5px;
+    }
+    .mtbl th,
+    .mtbl td {
+        padding: 6px 6px;
+    }
+    .mtbl__n {
+        width: 46px;
+    }
+    .mtbl th.mtbl__n:nth-child(4),
+    .mtbl td.mtbl__n:nth-child(4) {
+        width: 60px;
+    }
+    .mtbl__drop {
+        width: 24px;
+    }
+    .mqty {
+        width: 40px;
+        padding: 3px 3px;
+    }
+    .mcost__unit {
+        display: none;
     }
 }

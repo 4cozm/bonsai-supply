@@ -625,8 +625,19 @@
             }, 0);
             return;
         }
-        // 움직이지 않았다 = 클릭. 체크박스와 이름 버튼은 자기 핸들러가 처리하므로 비켜 준다.
-        if (open && !started.fromPick && !started.fromName) openDetail(started.item);
+        // 움직이지 않았다 = 클릭.
+        if (started.fromPick || started.fromName) return; // 자기 핸들러가 처리하므로 비켜 준다
+        if (started.fromPickZone) {
+            // 체크박스를 살짝 벗어나 옆 아이콘을 눌러도 토글되게 한다 — 체크박스 자체의
+            // 시각 크기는 그대로 두고 클릭 판정만 넓힌 것이다. 여기는 네이티브 change
+            // 이벤트가 안 오니 직접 토글한다.
+            if (isShort(started.item)) {
+                applyInclusion(started.item, !included(started.item));
+                renderManifest();
+            }
+            return;
+        }
+        if (open) openDetail(started.item);
     }
 
     var suppressNextClick = false;
@@ -702,6 +713,9 @@
             // 이 둘은 자기 클릭 동작이 따로 있다. 드래그가 아니었다면 그쪽에 맡긴다.
             fromPick: !!e.target.closest(".pick"),
             fromName: !!e.target.closest("button.name"),
+            // 체크박스 칸 + 바로 옆 아이콘 칸까지는 "선택" 의도로 본다. 실제 네이티브
+            // 체크박스(.pick)는 위에서 이미 따로 잡았으니 여기서는 그 나머지만 표시한다.
+            fromPickZone: !!e.target.closest(".tbl__pick, .tbl__ico") && !e.target.closest(".pick"),
         };
         window.addEventListener("pointermove", onDragMove);
         window.addEventListener("pointerup", onDragUp);
@@ -1208,6 +1222,7 @@
         var name = document.createElement("span");
         name.className = "mname";
         name.textContent = item.name;
+        name.title = item.name; // 좁은 열에서 ellipsis 로 잘려도 호버하면 전체 이름이 보인다
         wrap.appendChild(img);
         wrap.appendChild(name);
         tdItem.appendChild(wrap);
