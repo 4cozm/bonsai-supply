@@ -7,7 +7,13 @@
 (function () {
     "use strict";
 
-    var ICON_DIR = "assets/icons/types/";
+    /**
+     * EVE 이미지 서버. 인증이 없고 CORS가 전면 개방(`Access-Control-Allow-Origin: *`)이라
+     * 정적 호스팅에서 브라우저가 바로 때릴 수 있다. typeId 하나로 아이콘이 나오므로
+     * SDE를 받아 typeId→아이콘 매핑을 따로 만들 필요가 없다.
+     * 64px을 받아 32px로 그린다 — 고밀도 디스플레이 대응.
+     */
+    var ICON_BASE = "https://images.evetech.net/types/";
     var SPARK_W = 96;
     var SPARK_H = 22;
 
@@ -151,7 +157,8 @@
     }
 
     function iconSrc(item) {
-        return item.typeId ? ICON_DIR + item.typeId + "_64.png" : ICON_FALLBACK;
+        if (!item.typeId) return ICON_FALLBACK;
+        return ICON_BASE + item.typeId + "/icon?size=64";
     }
 
     /* ── 데이터 적재 ─────────────────────────────────────── */

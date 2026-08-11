@@ -23,7 +23,6 @@ node dev-server.mjs
 | `assets/js/app.js`       | 렌더 · 필터 · 매니페스트 · 복사    |
 | `assets/js/pricing.js`   | 시세 어댑터 (지금은 목업 provider) |
 | `assets/js/data.mock.js` | 임시 데이터 — API 붙일 때 삭제     |
-| `assets/icons/`          | EVE 타입 아이콘                    |
 | `dev-server.mjs`         | 로컬 확인용, 배포 대상 아님        |
 
 ## 지금 동작하는 것
@@ -66,15 +65,37 @@ API가 이 배열로 내려주면 된다.
 **데이터.** [app.js](assets/js/app.js)의 `loadItems()` 하나가 `window.BONSAI_MOCK`을 읽는
 유일한 지점이다. API가 생기면 이 함수만 `fetch("/api/stock")`으로 바꾼다.
 
-**typeId와 부피.** 목업의 `typeId`는 전부 `0`, `unitVolume`은 임의값이다. 실제 값은 ESI에서
-온다 — `corporations/{id}/assets`(보유 수량·type_id), `universe/types/{id}`(이름·volume).
-`name`은 인게임 표기와 **정확히** 일치해야 한다. 멀티바이가 이름으로 품목을 찾기 때문에,
-철자가 어긋나면 그 줄은 조용히 매칭에 실패한다.
+**부피.** 목업의 `unitVolume`은 아직 임의값이다. 실제 값은 ESI `universe/types/{id}`의
+`volume`에서 온다. `typeId`와 `name`은 `universe/ids/`로 검증한 실제 값이다.
+
+**이름은 정확해야 한다.** 멀티바이가 이름 문자열로 품목을 찾기 때문에, 철자가 어긋나면 그 줄은
+조용히 매칭에 실패한다. 실제로 목업을 검증하다 `Scourge Fury Heavy Assault Missile`이 게임에
+없는 이름인 걸 발견했다 — Fury는 Heavy Missile 계열이고 HAM의 T2는 Rage / Javelin이다.
+백엔드는 이름을 직접 짓지 말고 ESI가 준 값을 그대로 흘려보내야 한다.
 
 **인증.** Discord OAuth2, 테넌트 해석, 행어 선택 모두 아직 없다. 상단 행어 셀렉트는 표시만
 한다. `tenantKey`는 반드시 서버가 세션에서 결정해야 하며 클라이언트가 고르게 두면 안 된다.
 
 **필터.** 지금은 부족/전체/충족 셋뿐이다. 더 세분화하기로 했고, 기준은 아직 정하지 않았다.
+
+## 아이콘
+
+EVE 이미지 서버를 브라우저에서 직접 친다.
+
+```
+https://images.evetech.net/types/{typeId}/icon?size=64
+```
+
+인증이 없고 `Access-Control-Allow-Origin: *`이라 정적 호스팅에서 그대로 동작한다(직접 확인함).
+64px을 받아 32px로 그린다 — 고밀도 디스플레이 대응. 응답은 6KB 안팎, `max-age=3600`.
+
+**SDE는 받지 않는다.** 아이콘이 typeId 하나로 나오므로 typeId→아이콘 매핑을 만들 이유가 없다.
+SDE(JSONL 기준 98MB)는 이름·부피·그룹을 대량으로 캐싱하고 싶을 때 백엔드가 고려할 물건이지
+프론트의 관심사가 아니다. 로컬 벤더링도 마찬가지로 접었다 — 전체 타입 아이콘이 1.8만 개라
+실제로 쓰는 200여 개를 위해 100MB를 레포에 넣는 셈이 된다.
+
+요청이 실패하면 인라인 SVG 자리표시자로 조용히 대체되므로 화면은 깨지지 않는다.
+나중에 레이트리밋에 걸리면 그때 쓰는 typeId만 골라 벤더링하면 된다.
 
 ## 시세
 

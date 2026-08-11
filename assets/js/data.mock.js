@@ -48,22 +48,26 @@
         return series;
     }
 
+    // typeId 와 name 은 ESI /universe/ids/ 로 검증한 실제 값이다. 아이콘이 이 값으로 나온다.
+    // unitVolume 은 아직 자리표시자 — 실제 값은 ESI /universe/types/{id} 의 volume 이다.
     var items = [
-        { typeId: 0, name: "Hobgoblin II", group: "Light Scout Drone", stocked: 60, target: 300, unitVolume: 5 },
-        { typeId: 0, name: "Warrior II", group: "Light Scout Drone", stocked: 25, target: 150, unitVolume: 5 },
-        { typeId: 0, name: "Hammerhead II", group: "Medium Scout Drone", stocked: 90, target: 120, unitVolume: 10 },
-        { typeId: 0, name: "Nanite Repair Paste", group: "Nanite Paste", stocked: 140, target: 400, unitVolume: 0.1 },
-        { typeId: 0, name: "Damage Control II", group: "Damage Control", stocked: 12, target: 40, unitVolume: 5 },
-        { typeId: 0, name: "Large Shield Extender II", group: "Shield Extender", stocked: 34, target: 30, unitVolume: 5 },
-        { typeId: 0, name: "Multispectrum Shield Hardener II", group: "Shield Hardener", stocked: 8, target: 30, unitVolume: 5 },
-        { typeId: 0, name: "10MN Afterburner II", group: "Propulsion Module", stocked: 22, target: 25, unitVolume: 5 },
-        { typeId: 0, name: "Warp Disruptor II", group: "Warp Scrambler", stocked: 41, target: 40, unitVolume: 5 },
-        { typeId: 0, name: "Caldari Navy Antimatter Charge M", group: "Hybrid Charge", stocked: 4800, target: 20000, unitVolume: 0.0125 },
-        { typeId: 0, name: "Scourge Fury Heavy Assault Missile", group: "Advanced Missile", stocked: 9200, target: 15000, unitVolume: 0.015 },
-        { typeId: 0, name: "Republic Fleet EMP M", group: "Projectile Ammo", stocked: 16000, target: 12000, unitVolume: 0.0125 },
-        { typeId: 0, name: "Muninn", group: "Heavy Assault Cruiser", stocked: 3, target: 12, unitVolume: 115000 },
-        { typeId: 0, name: "Guardian", group: "Logistics Cruiser", stocked: 5, target: 8, unitVolume: 115000 },
-        { typeId: 0, name: "Scimitar", group: "Logistics Cruiser", stocked: 9, target: 8, unitVolume: 115000 },
+        { typeId: 2456, name: "Hobgoblin II", group: "Light Scout Drone", stocked: 60, target: 300, unitVolume: 5 },
+        { typeId: 2488, name: "Warrior II", group: "Light Scout Drone", stocked: 25, target: 150, unitVolume: 5 },
+        { typeId: 2185, name: "Hammerhead II", group: "Medium Scout Drone", stocked: 90, target: 120, unitVolume: 10 },
+        { typeId: 28668, name: "Nanite Repair Paste", group: "Nanite Paste", stocked: 140, target: 400, unitVolume: 0.1 },
+        { typeId: 2048, name: "Damage Control II", group: "Damage Control", stocked: 12, target: 40, unitVolume: 5 },
+        { typeId: 3841, name: "Large Shield Extender II", group: "Shield Extender", stocked: 34, target: 30, unitVolume: 5 },
+        { typeId: 2281, name: "Multispectrum Shield Hardener II", group: "Shield Hardener", stocked: 8, target: 30, unitVolume: 5 },
+        { typeId: 12058, name: "10MN Afterburner II", group: "Propulsion Module", stocked: 22, target: 25, unitVolume: 5 },
+        { typeId: 3244, name: "Warp Disruptor II", group: "Warp Scrambler", stocked: 41, target: 40, unitVolume: 5 },
+        { typeId: 23025, name: "Caldari Navy Antimatter Charge M", group: "Hybrid Charge", stocked: 4800, target: 20000, unitVolume: 0.0125 },
+        // "Scourge Fury Heavy Assault Missile" 은 게임에 없는 이름이었다.
+        // Fury 는 Heavy Missile 계열이고, HAM 의 T2 는 Rage / Javelin 이다.
+        { typeId: 2679, name: "Scourge Rage Heavy Assault Missile", group: "Advanced Missile", stocked: 9200, target: 15000, unitVolume: 0.015 },
+        { typeId: 21896, name: "Republic Fleet EMP M", group: "Projectile Ammo", stocked: 16000, target: 12000, unitVolume: 0.0125 },
+        { typeId: 12015, name: "Muninn", group: "Heavy Assault Cruiser", stocked: 3, target: 12, unitVolume: 115000 },
+        { typeId: 11987, name: "Guardian", group: "Logistics Cruiser", stocked: 5, target: 8, unitVolume: 115000 },
+        { typeId: 11978, name: "Scimitar", group: "Logistics Cruiser", stocked: 9, target: 8, unitVolume: 115000 },
     ];
 
     items.forEach(function (item, i) {
