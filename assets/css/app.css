@@ -16,9 +16,11 @@
     --mid: #e8a33d;
     --high: #52b788;
 
-    --mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", "Consolas", "SF Mono", "Menlo", monospace;
-    --cond: "Oswald", "Roboto Condensed", "Arial Narrow", "Helvetica Neue Condensed", sans-serif;
-    --sans: "IBM Plex Sans", ui-sans-serif, "Segoe UI", system-ui, sans-serif;
+    /* Pretendard 는 한글 전용 폴백이다 — 앞쪽 서구 폰트에 없는 한글 글리프만 여기서 받는다.
+       숫자·영문은 여전히 JetBrains Mono/Oswald/Plex Sans 가 먼저 매칭되어 그대로 쓰인다. */
+    --mono: "JetBrains Mono", "Pretendard", ui-monospace, "Cascadia Mono", "Consolas", "SF Mono", "Menlo", monospace;
+    --cond: "Oswald", "Pretendard", "Roboto Condensed", "Arial Narrow", "Helvetica Neue Condensed", sans-serif;
+    --sans: "IBM Plex Sans", "Pretendard", ui-sans-serif, "Segoe UI", system-ui, sans-serif;
 
     --gut: 20px;
 }
