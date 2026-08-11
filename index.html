@@ -58,6 +58,26 @@
                                     autocomplete="off"
                                 />
                             </label>
+                            <label class="field">
+                                <span class="field__label vh">정렬 기준</span>
+                                <select class="field__input" data-sort>
+                                    <option value="days">소진 예상일</option>
+                                    <option value="ratio">부족률</option>
+                                    <option value="short">부족 수량</option>
+                                    <option value="cost">예상 비용</option>
+                                    <option value="volume">운반 부피</option>
+                                    <option value="density">ISK / m³</option>
+                                    <option value="name">이름</option>
+                                </select>
+                            </label>
+                            <button
+                                class="btn btn--ghost btn--dir"
+                                type="button"
+                                data-sort-dir
+                                aria-label="정렬 방향 바꾸기"
+                            >
+                                <span data-sort-dir-label>급한 순</span>
+                            </button>
                             <button class="btn btn--ghost" type="button" data-add-open>
                                 품목 추가
                             </button>

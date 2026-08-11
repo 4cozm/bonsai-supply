@@ -36,6 +36,7 @@
         unitPrices: {},
         priceSource: "—",
         baseTarget: {}, // 저장 전 원래 목표 수량. 키가 있으면 곧 "변경됨"이다.
+        sort: { key: "days", asc: true },
         sampledAt: Date.now(),
         sampleMs: 10 * 60 * 1000,
         sparkPoints: 144, // 표의 스파크라인이 그리는 표본 수 (24시간 / 10분)
@@ -59,6 +60,9 @@
         manifestIsk: document.querySelector("[data-manifest-isk]"),
         pending: document.querySelector("[data-pending]"),
         pendingCount: document.querySelector("[data-pending-count]"),
+        sort: document.querySelector("[data-sort]"),
+        sortDir: document.querySelector("[data-sort-dir]"),
+        sortDirLabel: document.querySelector("[data-sort-dir-label]"),
     };
 
     /* ── 숫자 표기 ───────────────────────────────────────── */
@@ -152,6 +156,39 @@
         return item.target > 0 ? item.stocked / item.target : 1;
     }
 
+    /**
+     * 최근 소비 속도(개/일).
+     *
+     * 감소분만 더한다 — 보급이 들어온 계단은 소비가 아니므로 빼고 세야 실제 소진 속도가 나온다.
+     * 창은 7일. 더 짧으면 전투 한 번에 출렁이고, 더 길면 최근 변화를 못 따라간다.
+     */
+    function burnRate(item) {
+        var h = item.history || [];
+        if (h.length < 2) return 0;
+        var perDay = (24 * 60 * 60 * 1000) / state.sampleMs;
+        var from = Math.max(0, h.length - Math.round(perDay * 7));
+        var drop = 0;
+        for (var i = from + 1; i < h.length; i++) {
+            if (h[i] < h[i - 1]) drop += h[i - 1] - h[i];
+        }
+        var days = (h.length - 1 - from) / perDay;
+        return days > 0 ? drop / days : 0;
+    }
+
+    /** 이 속도면 며칠 뒤 바닥나는가. 소비가 없으면 Infinity. */
+    function daysLeft(item) {
+        var rate = burnRate(item);
+        if (rate <= 0) return Infinity;
+        return item.stocked / rate;
+    }
+
+    /** 부피당 가치 — 한 번에 다 못 실을 때 무엇을 먼저 싣느냐를 가른다. */
+    function iskPerM3(item) {
+        var v = item.unitVolume || 0;
+        if (!v) return 0;
+        return unitPrice(item) / v;
+    }
+
     function unitPrice(item) {
         return state.unitPrices[item.name] || 0;
     }
@@ -207,11 +244,55 @@
         });
     }
 
+    /* ── 정렬 ───────────────────────────────────────────── */
+
+    /**
+     * 축마다 값과 방향 표기가 다르다. "적은 순"이 급한 것도 있고(소진 예상일)
+     * 그렇지 않은 것도 있어서(예상 비용) 라벨을 축에 붙여 둔다.
+     */
+    var SORT = {
+        days: { value: daysLeft, asc: "급한 순", desc: "여유 순" },
+        ratio: { value: ratioOf, asc: "많이 부족한 순", desc: "덜 부족한 순" },
+        short: { value: deficit, desc: "많은 순", asc: "적은 순" },
+        cost: { value: lineCost, desc: "비싼 순", asc: "싼 순" },
+        volume: {
+            value: function (i) {
+                return deficit(i) * (i.unitVolume || 0);
+            },
+            desc: "큰 순",
+            asc: "작은 순",
+        },
+        density: { value: iskPerM3, desc: "높은 순", asc: "낮은 순" },
+        name: { value: null, asc: "가나다 순", desc: "역순" },
+    };
+
+    function sortItems(list) {
+        var spec = SORT[state.sort.key] || SORT.days;
+        var sign = state.sort.asc ? 1 : -1;
+
+        return list.slice().sort(function (a, b) {
+            if (!spec.value) return sign * a.name.localeCompare(b.name, "ko");
+            var av = spec.value(a);
+            var bv = spec.value(b);
+            // Infinity(소비 없음)는 어느 방향이든 끝으로 보낸다 — 정렬의 목적이
+            // 급한 것을 앞에 두는 것이지, 계산 불가한 항목을 앞세우는 게 아니다.
+            if (!isFinite(av) && !isFinite(bv)) return 0;
+            if (!isFinite(av)) return 1;
+            if (!isFinite(bv)) return -1;
+            return sign * (av - bv);
+        });
+    }
+
+    function renderSortDir() {
+        var spec = SORT[state.sort.key] || SORT.days;
+        el.sortDirLabel.textContent = state.sort.asc ? spec.asc : spec.desc;
+    }
+
     /* ── 표시 대상 ──────────────────────────────────────── */
 
     function visibleItems() {
         var q = state.query.trim().toLowerCase();
-        return state.items.filter(function (item) {
+        var kept = state.items.filter(function (item) {
             if (state.filter === "short" && !isShort(item)) return false;
             if (state.filter === "ok" && isShort(item)) return false;
             if (!q) return true;
@@ -222,6 +303,7 @@
                     .indexOf(q) !== -1
             );
         });
+        return sortItems(kept);
     }
 
     /* ── 렌더: 충족률 바 ────────────────────────────────── */
@@ -1020,7 +1102,16 @@
         // 부족
         var tdShort = document.createElement("td");
         tdShort.className = "tbl__n tbl__short " + (short ? "short" : "ok");
-        tdShort.textContent = short ? "−" + num(short) : "충족";
+        var shortMain = document.createElement("span");
+        shortMain.textContent = short ? "−" + num(short) : "충족";
+        tdShort.appendChild(shortMain);
+        var left = daysLeft(item);
+        if (isFinite(left)) {
+            var runOut = document.createElement("span");
+            runOut.className = "runout" + (left <= 3 ? " is-soon" : "");
+            runOut.textContent = (left < 10 ? Math.round(left * 10) / 10 : Math.round(left)) + "일 남음";
+            tdShort.appendChild(runOut);
+        }
         tr.appendChild(tdShort);
 
         // 예상 비용 + 단가
@@ -1409,6 +1500,21 @@
         render();
     });
 
+    el.sort.addEventListener("change", function () {
+        state.sort.key = el.sort.value;
+        // 축을 바꾸면 그 축에서 "유용한 쪽"을 기본으로 잡는다. 소진 예상일과 부족률은
+        // 급한 것이 앞에 와야 하고, 비용·부피·밀도는 큰 것이 앞에 와야 눈에 띈다.
+        state.sort.asc = el.sort.value === "days" || el.sort.value === "ratio" || el.sort.value === "name";
+        renderSortDir();
+        render();
+    });
+
+    el.sortDir.addEventListener("click", function () {
+        state.sort.asc = !state.sort.asc;
+        renderSortDir();
+        render();
+    });
+
     el.copy.addEventListener("click", copyManifest);
 
     document.querySelector("[data-pending-save]").addEventListener("click", openSaveModal);
@@ -1444,6 +1550,7 @@
     /* ── 시작 ───────────────────────────────────────────── */
 
     state.items = loadItems();
+    renderSortDir();
     render();
     loadPrices();
 })();

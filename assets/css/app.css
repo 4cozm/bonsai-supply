@@ -581,6 +581,22 @@ select.field__input {
     font: 11px/1.3 var(--mono);
 }
 
+/* 소진 예상 — 부족 수량이 "얼마나"라면 이건 "언제까지"다. */
+.runout {
+    display: block;
+    margin-top: 2px;
+    color: var(--dim);
+    font: 11px/1.3 var(--mono);
+    font-variant-numeric: tabular-nums;
+}
+.runout.is-soon {
+    color: var(--low);
+}
+
+.btn--dir {
+    white-space: nowrap;
+}
+
 .empty {
     margin: 0;
     padding: 44px 20px;
