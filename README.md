@@ -103,6 +103,29 @@ Muninn 96,000 대 10,000, Guardian 115,000 대 10,000. 행어에 쌓아 두는 �
 **인증.** Discord OAuth2, 테넌트 해석, 행어 선택 모두 아직 없다. 상단 행어 셀렉트는 표시만
 한다. `tenantKey`는 반드시 서버가 세션에서 결정해야 하며 클라이언트가 고르게 두면 안 된다.
 
+## 도메인 배치
+
+| 호스트                       | 가리키는 곳    | 용도                        |
+| ---------------------------- | -------------- | --------------------------- |
+| `supply.catalyst-for-you.com` | GitHub Pages   | 이 프론트                   |
+| `api.catalyst-for-you.com`    | 인스턴스       | API (예정)                  |
+| `esi.cat4u.shop`              | 인스턴스       | EVE SSO 콜백 — 별개 관심사  |
+
+**프론트와 API를 같은 등록가능도메인(`catalyst-for-you.com`)에 두는 것이 요점이다.** 그래야
+세션 쿠키를 `SameSite=Lax`로 쓸 수 있고 서드파티 쿠키 차단(Safari ITP 등)에 걸리지 않는다.
+서로 다른 도메인에 갈라 두면 크로스사이트가 되어, 메모리 보관 단명 JWT + refresh 엔드포인트를
+직접 만들어야 한다. `cat4u.shop`은 ESI 전용이라 여기 섞지 않는다.
+
+origin은 여전히 다르므로 CORS는 필요하다 — SameSite와 CORS는 별개 축이다.
+
+```
+Access-Control-Allow-Origin: https://supply.catalyst-for-you.com   (자격증명 동반이라 * 불가)
+Access-Control-Allow-Credentials: true
+Set-Cookie: sid=...; Domain=catalyst-for-you.com; Path=/; Secure; HttpOnly; SameSite=Lax
+```
+
+프론트는 `fetch(..., { credentials: "include" })`로 부른다.
+
 **필터.** 지금은 부족/전체/충족 셋뿐이다. 더 세분화하기로 했고, 기준은 아직 정하지 않았다.
 
 ## 아이콘
