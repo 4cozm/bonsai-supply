@@ -33,6 +33,7 @@
         filter: "short",
         query: "",
         included: new Set(), // 기본은 "전부 미포함", 사용자가 고른 것만 기록한다
+        manifestQty: {}, // 매니페스트 수량 오버라이드. 없으면 부족분 전체가 기본이다.
         unitPrices: {},
         priceSource: "—",
         baseTarget: {}, // 저장 전 원래 목표 수량. 키가 있으면 곧 "변경됨"이다.
@@ -46,7 +47,8 @@
     var el = {
         rows: document.querySelector("[data-rows]"),
         empty: document.querySelector("[data-empty]"),
-        slab: document.querySelector("[data-slab]"),
+        manifestRows: document.querySelector("[data-manifest-rows]"),
+        manifestEmpty: document.querySelector("[data-manifest-empty]"),
         copy: document.querySelector("[data-copy]"),
         toast: document.querySelector("[data-toast]"),
         query: document.getElementById("q"),
@@ -187,6 +189,35 @@
         var v = item.unitVolume || 0;
         if (!v) return 0;
         return unitPrice(item) / v;
+    }
+
+    /**
+     * 매니페스트에 실을 수량. 기본은 부족분 전체지만 사용자나 오마카세가 조절할 수 있다.
+     * 저장된 오버라이드가 현재 부족분보다 크면(목표를 낮췄거나 재고가 늘어난 경우) 읽는
+     * 시점에 자연히 잘라낸다 — 오버라이드 자체를 그때그때 지우고 다닐 필요가 없다.
+     */
+    function manifestQtyOf(item) {
+        var max = deficit(item);
+        var override = state.manifestQty[item.name];
+        if (override == null) return max;
+        return Math.max(0, Math.min(max, override));
+    }
+
+    function setManifestQty(item, qty) {
+        var max = deficit(item);
+        var clamped = Math.max(0, Math.min(max, isNaN(qty) ? 0 : Math.round(qty)));
+        // 기본값과 같아지면 오버라이드를 지운다 — 나중에 목표가 바뀌어도 "전체"를 계속
+        // 따라가게 하려는 것이다. 숫자를 박아 두면 그 순간의 부족분에 고정되어 버린다.
+        if (clamped === max) delete state.manifestQty[item.name];
+        else state.manifestQty[item.name] = clamped;
+    }
+
+    function manifestLineVolume(item) {
+        return manifestQtyOf(item) * (item.unitVolume || 0);
+    }
+
+    function manifestLineCost(item) {
+        return manifestQtyOf(item) * unitPrice(item);
     }
 
     function unitPrice(item) {
@@ -556,8 +587,14 @@
         if (!isShort(item)) return false;
         if (included(item) === on) return false;
 
-        if (on) state.included.add(item.name);
-        else state.included.delete(item.name);
+        if (on) {
+            state.included.add(item.name);
+        } else {
+            state.included.delete(item.name);
+            // 다시 체크하면 항상 그 시점의 전체 부족분에서 시작한다 — 예전에 줄여 뒀던
+            // 수량을 기억해 뒀다가 불쑥 되돌리면 놀란다.
+            delete state.manifestQty[item.name];
+        }
 
         var tr = rowFor(item);
         if (tr) {
@@ -1137,45 +1174,119 @@
 
     function manifestText() {
         // EVE 멀티바이는 "품목명<TAB>수량" 줄을 읽는다. 이름은 인게임 표기와 정확히 일치해야 한다.
+        // 수량 0인 줄은 내보내지 않는다 — 사용자가 매니페스트에서 0으로 낮춘 품목까지
+        // 붙여넣기에 실리면 멀티바이 창에 의미 없는 줄이 남는다.
         return manifestItems()
+            .filter(function (item) {
+                return manifestQtyOf(item) > 0;
+            })
             .map(function (item) {
-                return item.name + "\t" + deficit(item);
+                return item.name + "\t" + manifestQtyOf(item);
             })
             .join("\n");
+    }
+
+    function buildManifestRow(item) {
+        var tr = document.createElement("tr");
+        tr.className = "mrow";
+
+        var tdItem = document.createElement("td");
+        tdItem.className = "mtbl__item";
+        var wrap = document.createElement("div");
+        wrap.className = "mrow__item";
+        var img = document.createElement("img");
+        img.className = "micon";
+        img.width = 20;
+        img.height = 20;
+        img.alt = "";
+        img.loading = "lazy";
+        img.src = iconSrc(item);
+        img.addEventListener("error", function once() {
+            img.removeEventListener("error", once);
+            img.src = ICON_FALLBACK;
+        });
+        var name = document.createElement("span");
+        name.className = "mname";
+        name.textContent = item.name;
+        wrap.appendChild(img);
+        wrap.appendChild(name);
+        tdItem.appendChild(wrap);
+        tr.appendChild(tdItem);
+
+        // 수량 — 매니페스트의 조절 지점. 기본은 부족분 전체, 위로는 그만큼이 상한이다.
+        var tdQty = document.createElement("td");
+        tdQty.className = "mtbl__n";
+        var qty = document.createElement("input");
+        qty.type = "number";
+        qty.min = "0";
+        qty.max = String(deficit(item));
+        qty.className = "mqty";
+        qty.value = String(manifestQtyOf(item));
+        qty.setAttribute("aria-label", item.name + " 매니페스트 수량");
+        qty.addEventListener("change", function () {
+            setManifestQty(item, parseInt(qty.value, 10));
+            renderManifest();
+        });
+        tdQty.appendChild(qty);
+        tr.appendChild(tdQty);
+
+        var tdVol = document.createElement("td");
+        tdVol.className = "mtbl__n";
+        tdVol.textContent = volume(manifestLineVolume(item));
+        tr.appendChild(tdVol);
+
+        var tdCost = document.createElement("td");
+        tdCost.className = "mtbl__n";
+        var cost = document.createElement("span");
+        cost.className = "mcost";
+        cost.textContent = isk(manifestLineCost(item));
+        var unit = document.createElement("span");
+        unit.className = "mcost__unit";
+        unit.textContent = unitPrice(item) ? isk(unitPrice(item)) + "/개" : "";
+        tdCost.appendChild(cost);
+        tdCost.appendChild(unit);
+        tr.appendChild(tdCost);
+
+        var tdDrop = document.createElement("td");
+        tdDrop.className = "mtbl__drop";
+        var drop = document.createElement("button");
+        drop.type = "button";
+        drop.className = "mdrop";
+        drop.textContent = "✕";
+        drop.setAttribute("aria-label", item.name + " 매니페스트에서 빼기");
+        drop.addEventListener("click", function () {
+            applyInclusion(item, false);
+            render();
+        });
+        tdDrop.appendChild(drop);
+        tr.appendChild(tdDrop);
+
+        return tr;
     }
 
     function renderManifest() {
         var picked = manifestItems();
 
-        el.slab.textContent = "";
+        el.manifestRows.textContent = "";
         picked.forEach(function (item) {
-            var row = document.createElement("div");
-            row.className = "slab__row";
-
-            var name = document.createElement("span");
-            name.className = "slab__name";
-            name.textContent = item.name;
-
-            var qty = document.createElement("span");
-            qty.className = "slab__qty";
-            qty.textContent = num(deficit(item));
-
-            row.appendChild(name);
-            row.appendChild(qty);
-            el.slab.appendChild(row);
+            el.manifestRows.appendChild(buildManifestRow(item));
         });
+        el.manifestEmpty.hidden = picked.length !== 0;
 
         var vol = picked.reduce(function (sum, item) {
-            return sum + deficit(item) * (item.unitVolume || 0);
+            return sum + manifestLineVolume(item);
         }, 0);
         var cost = picked.reduce(function (sum, item) {
-            return sum + lineCost(item);
+            return sum + manifestLineCost(item);
         }, 0);
+        var lines = picked.filter(function (item) {
+            return manifestQtyOf(item) > 0;
+        }).length;
 
-        el.manifestLines.textContent = num(picked.length);
+        el.manifestLines.textContent = num(lines);
         el.manifestVolume.textContent = volume(vol);
         el.manifestIsk.textContent = cost > 0 ? iskTotal(cost) : "—";
-        el.copy.disabled = picked.length === 0;
+        el.copy.disabled = lines === 0;
     }
 
     /* ── 렌더 ───────────────────────────────────────────── */
@@ -1455,7 +1566,203 @@
         }, 2600);
     }
 
-    /* ── 복사 ───────────────────────────────────────────── */
+    /* ── 오마카세: 적재량 안에서 우선순위대로 채운다 ─────── */
+
+    /**
+     * 후보를 소진 예상일 오름차순(가장 급한 것부터)으로 정렬하고, 적재량이 허락하는
+     * 만큼 채운다. 품목 하나 안에서는 전량 아니면 포기가 아니라 남는 용량만큼만
+     * 부분적으로 담는다 — 부피가 일정한 개별 유닛의 합이라 0/1 배낭으로 풀 이유가 없고,
+     * 그러면 용량을 셀 단위로 접는 DP가 소수점 부피 품목(탄약 0.0125 m³ 등)에서 배열이
+     * 수백만 칸으로 터지는 것도 피한다.
+     *
+     * 순수 함수다 — state 를 건드리지 않는다. 두 호출부(전체 재고 대상, 매니페스트
+     * 대상)가 후보 목록만 다르게 넘기고 알고리즘은 그대로 공유한다.
+     *
+     * @param {Array<{item: object, maxQty: number}>} candidates
+     * @param {number} capacityM3
+     * @returns {{picks: Array<{item, qty}>, usedVolume: number, skipped: Array<object>}}
+     */
+    function omakase(candidates, capacityM3) {
+        var sorted = candidates
+            .filter(function (c) {
+                return c.maxQty > 0;
+            })
+            .slice()
+            .sort(function (a, b) {
+                var au = daysLeft(a.item);
+                var bu = daysLeft(b.item);
+                if (!isFinite(au) && !isFinite(bu)) return 0;
+                if (!isFinite(au)) return 1;
+                if (!isFinite(bu)) return -1;
+                return au - bu;
+            });
+
+        var remaining = Math.max(0, capacityM3);
+        var picks = [];
+        var skipped = [];
+
+        sorted.forEach(function (c) {
+            var v = c.item.unitVolume || 0;
+            var qty = v <= 0 ? c.maxQty : Math.min(c.maxQty, Math.floor(remaining / v));
+            if (qty <= 0) {
+                skipped.push(c.item);
+                return;
+            }
+            picks.push({ item: c.item, qty: qty });
+            remaining -= qty * v;
+        });
+
+        return { picks: picks, usedVolume: capacityM3 - remaining, skipped: skipped };
+    }
+
+    var omakaseModal = {
+        root: document.querySelector("[data-omakase-modal]"),
+        title: document.querySelector("[data-omakase-title]"),
+        desc: document.querySelector("[data-omakase-desc]"),
+        capacity: document.querySelector("[data-omakase-capacity]"),
+        status: document.querySelector("[data-omakase-status]"),
+        preview: document.querySelector("[data-omakase-preview]"),
+        confirm: document.querySelector("[data-omakase-confirm]"),
+    };
+
+    var omakaseMode = "all"; // "all" 전체 부족 품목 | "manifest" 매니페스트에 담긴 품목
+    var omakaseResult = null;
+
+    /**
+     * 두 진입점의 유일한 차이 — 후보 풀을 어디서 뽑는지.
+     * 상한은 둘 다 "부족분 전체"로 같다: 매니페스트를 최적화한다고 해서 원래 필요한
+     * 양보다 더 담을 이유는 없다.
+     */
+    function omakaseCandidates() {
+        var pool = omakaseMode === "manifest" ? state.items.filter(included) : state.items.filter(isShort);
+        return pool.map(function (item) {
+            return { item: item, maxQty: deficit(item) };
+        });
+    }
+
+    function setOmakaseStatus(text, tone) {
+        omakaseModal.status.textContent = text || "";
+        if (tone) omakaseModal.status.setAttribute("data-tone", tone);
+        else omakaseModal.status.removeAttribute("data-tone");
+    }
+
+    function openOmakase(mode) {
+        omakaseMode = mode;
+        omakaseResult = null;
+
+        var candidates = omakaseCandidates();
+        if (!candidates.length) {
+            toast(mode === "manifest" ? "매니페스트가 비어 있습니다." : "부족한 품목이 없습니다.", "warn");
+            return;
+        }
+
+        omakaseModal.title.textContent = mode === "manifest" ? "질량 최적화" : "자동 계산";
+        omakaseModal.desc.textContent =
+            mode === "manifest"
+                ? "매니페스트에 담긴 품목만 대상으로, 적재량에 맞춰 다시 채웁니다."
+                : "부족한 전체 품목 중에서 급한 순으로 적재량에 맞춰 채웁니다.";
+
+        omakaseModal.capacity.value = "";
+        omakaseModal.preview.textContent = "";
+        omakaseModal.confirm.disabled = true;
+        setOmakaseStatus("함선 적재량을 입력하세요.");
+
+        omakaseModal.root.showModal();
+        omakaseModal.capacity.focus();
+    }
+
+    function recomputeOmakase() {
+        var cap = parseFloat(omakaseModal.capacity.value);
+        omakaseModal.preview.textContent = "";
+
+        if (!cap || cap <= 0) {
+            omakaseResult = null;
+            omakaseModal.confirm.disabled = true;
+            setOmakaseStatus("함선 적재량을 입력하세요.");
+            return;
+        }
+
+        omakaseResult = omakase(omakaseCandidates(), cap);
+
+        omakaseResult.picks.forEach(function (p) {
+            var li = document.createElement("li");
+            li.className = "diff__row";
+            var name = document.createElement("span");
+            name.className = "diff__name";
+            name.textContent = p.item.name;
+            var qty = document.createElement("span");
+            qty.className = "diff__change diff__to";
+            qty.textContent = num(p.qty) + "개";
+            li.appendChild(name);
+            li.appendChild(qty);
+            omakaseModal.preview.appendChild(li);
+        });
+
+        var pct = cap > 0 ? Math.round((omakaseResult.usedVolume / cap) * 100) : 0;
+        setOmakaseStatus(
+            num(omakaseResult.picks.length) +
+                "개 품목 · " +
+                volume(omakaseResult.usedVolume) +
+                " / " +
+                volume(cap) +
+                " m³ (" +
+                pct +
+                "%)" +
+                (omakaseResult.skipped.length
+                    ? " · " + num(omakaseResult.skipped.length) + "개는 공간이 부족해 제외"
+                    : "")
+        );
+        omakaseModal.confirm.disabled = omakaseResult.picks.length === 0;
+    }
+
+    function commitOmakase() {
+        if (!omakaseResult || !omakaseResult.picks.length) return;
+
+        if (omakaseMode === "manifest") {
+            // "이 적재량에 맞춘 목록"이 목적이므로, 이번에 뽑히지 않은 기존 품목은 뺀다.
+            // 남겨 두면 최적화가 아니라 그냥 추가가 되어 버린다.
+            var pickedItems = omakaseResult.picks.map(function (p) {
+                return p.item;
+            });
+            state.items.filter(included).forEach(function (item) {
+                if (pickedItems.indexOf(item) === -1) applyInclusion(item, false);
+            });
+        }
+
+        omakaseResult.picks.forEach(function (p) {
+            applyInclusion(p.item, true);
+            setManifestQty(p.item, p.qty);
+        });
+
+        var count = omakaseResult.picks.length;
+        omakaseModal.root.close();
+        render();
+        toast(
+            omakaseMode === "manifest"
+                ? "질량에 맞춰 " + num(count) + "개로 다시 채웠습니다."
+                : num(count) + "개를 매니페스트에 담았습니다."
+        );
+    }
+
+    omakaseModal.capacity.addEventListener("input", recomputeOmakase);
+    omakaseModal.confirm.addEventListener("click", commitOmakase);
+    document.querySelectorAll("[data-omakase-cancel]").forEach(function (b) {
+        b.addEventListener("click", function () {
+            omakaseModal.root.close();
+        });
+    });
+    omakaseModal.root.addEventListener("click", function (e) {
+        if (e.target === omakaseModal.root) omakaseModal.root.close();
+    });
+
+    document.querySelector("[data-auto-calc]").addEventListener("click", function () {
+        openOmakase("all");
+    });
+    document.querySelector("[data-manifest-optimize]").addEventListener("click", function () {
+        openOmakase("manifest");
+    });
+
+    /* ── 토스트 ─────────────────────────────────────────── */
 
     function copyManifest() {
         var text = manifestText();
@@ -1463,12 +1770,18 @@
 
         function fallback() {
             // 클립보드 API는 보안 컨텍스트(https / localhost)에서만 동작한다.
-            var range = document.createRange();
-            range.selectNodeContents(el.slab);
-            var sel = window.getSelection();
-            sel.removeAllRanges();
-            sel.addRange(range);
-            el.slab.focus();
+            // 매니페스트가 표(아이콘·입력 요소 포함)라 DOM 선택으로는 "이름<TAB>수량"이
+            // 깨끗하게 안 나온다 — 순수 텍스트만 담은 숨김 textarea 를 선택한다.
+            var ta = document.createElement("textarea");
+            ta.value = text;
+            ta.setAttribute("readonly", "");
+            ta.className = "vh";
+            document.body.appendChild(ta);
+            ta.focus();
+            ta.select();
+            setTimeout(function () {
+                document.body.removeChild(ta);
+            }, 4000);
             toast("매니페스트를 선택했습니다. Ctrl+C 로 복사하세요.", "warn");
         }
 

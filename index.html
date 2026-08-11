@@ -99,6 +99,9 @@
                             >
                                 <span data-sort-dir-label>급한 순</span>
                             </button>
+                            <button class="btn btn--ghost" type="button" data-auto-calc>
+                                자동 계산
+                            </button>
                             <button class="btn btn--ghost" type="button" data-add-open>
                                 품목 추가
                             </button>
@@ -161,11 +164,33 @@
 
                 <aside class="manifest" aria-labelledby="manifest-title">
                     <div class="manifest__head">
-                        <h2 class="manifest__title" id="manifest-title">멀티바이 매니페스트</h2>
-                        <p class="manifest__hint">게임 내 Multibuy 창에 그대로 붙여넣으세요.</p>
+                        <div class="manifest__id">
+                            <h2 class="manifest__title" id="manifest-title">멀티바이 매니페스트</h2>
+                            <p class="manifest__hint">게임 내 Multibuy 창에 그대로 붙여넣으세요.</p>
+                        </div>
+                        <button class="btn btn--ghost" type="button" data-manifest-optimize>
+                            질량 최적화
+                        </button>
                     </div>
 
-                    <div class="manifest__slab" data-slab tabindex="0" aria-live="polite"></div>
+                    <div class="mtablewrap">
+                        <table class="mtbl">
+                            <caption class="vh">
+                                매니페스트 품목, 수량, 부피, 예상 비용
+                            </caption>
+                            <thead>
+                                <tr>
+                                    <th class="mtbl__item" scope="col">품목</th>
+                                    <th class="mtbl__n" scope="col">수량</th>
+                                    <th class="mtbl__n" scope="col">부피</th>
+                                    <th class="mtbl__n" scope="col">비용</th>
+                                    <th class="mtbl__drop" scope="col"><span class="vh">빼기</span></th>
+                                </tr>
+                            </thead>
+                            <tbody data-manifest-rows></tbody>
+                        </table>
+                        <p class="empty" data-manifest-empty>포함할 품목을 선택하세요.</p>
+                    </div>
 
                     <div class="manifest__foot">
                         <p class="manifest__meta">
@@ -233,6 +258,38 @@
                 <div class="chart" data-modal-chart></div>
                 <figcaption class="modal__cap" data-modal-cap></figcaption>
             </figure>
+        </dialog>
+
+        <dialog class="modal modal--narrow" data-omakase-modal aria-labelledby="omakase-title">
+            <header class="modal__head">
+                <div class="modal__id">
+                    <h2 class="modal__name" id="omakase-title" data-omakase-title>자동 계산</h2>
+                    <p class="modal__group" data-omakase-desc></p>
+                </div>
+                <button class="modal__x" type="button" data-omakase-cancel aria-label="닫기">✕</button>
+            </header>
+
+            <div class="add__body">
+                <label class="add__field">
+                    <span class="field__label">함선 적재량 (m³)</span>
+                    <input
+                        class="add__input add__input--num"
+                        type="number"
+                        min="0"
+                        step="any"
+                        data-omakase-capacity
+                        placeholder="예: 431000"
+                    />
+                </label>
+
+                <p class="add__status" data-omakase-status>함선 적재량을 입력하세요.</p>
+                <ul class="diff" data-omakase-preview></ul>
+            </div>
+
+            <footer class="modal__foot">
+                <button class="btn btn--ghost" type="button" data-omakase-cancel>취소</button>
+                <button class="btn" type="button" data-omakase-confirm disabled>매니페스트에 반영</button>
+            </footer>
         </dialog>
 
         <dialog class="modal modal--narrow" data-save-modal aria-labelledby="save-title">
