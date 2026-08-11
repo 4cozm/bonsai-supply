@@ -398,6 +398,206 @@
         });
     }
 
+    /* ── 상세 모달: 전체 추이 그래프 ────────────────────── */
+
+    var modal = {
+        root: document.querySelector("[data-modal]"),
+        icon: document.querySelector("[data-modal-icon]"),
+        name: document.querySelector("[data-modal-name]"),
+        group: document.querySelector("[data-modal-group]"),
+        stocked: document.querySelector("[data-modal-stocked]"),
+        target: document.querySelector("[data-modal-target]"),
+        short: document.querySelector("[data-modal-short]"),
+        delta: document.querySelector("[data-modal-delta]"),
+        chart: document.querySelector("[data-modal-chart]"),
+        close: document.querySelector("[data-modal-close]"),
+    };
+
+    var CHART_H = 240;
+    var PAD = { top: 14, right: 12, bottom: 24, left: 46 };
+
+    function svgEl(tag, attrs) {
+        var e = document.createElementNS("http://www.w3.org/2000/svg", tag);
+        for (var k in attrs) e.setAttribute(k, String(attrs[k]));
+        return e;
+    }
+
+    /**
+     * 큰 추이 차트. 스파크라인과 달리 축과 목표선을 함께 그린다 —
+     * "얼마나 남았나"가 아니라 "목표선 아래로 언제 내려갔나"를 읽는 그림이다.
+     */
+    function buildChart(item, CHART_W) {
+        var data = item.history || [];
+        var wrap = document.createElement("div");
+        if (data.length < 2) {
+            wrap.className = "empty";
+            wrap.textContent = "추이 기록이 없습니다.";
+            return wrap;
+        }
+
+        var color = rampColor(ratioOf(item));
+        // viewBox 폭을 실제 렌더 폭에 맞춘다. 고정 폭 viewBox를 늘려 쓰면 축 라벨 텍스트가
+        // 가로로 찌그러진다 — 텍스트가 없는 스파크라인과 달리 여기서는 바로 티가 난다.
+        var svg = svgEl("svg", {
+            class: "chart__svg",
+            viewBox: "0 0 " + CHART_W + " " + CHART_H,
+            role: "img",
+            "aria-label":
+                item.name +
+                " 최근 추이, " +
+                num(data[0]) +
+                "에서 " +
+                num(data[data.length - 1]) +
+                "로 변화",
+        });
+        svg.style.setProperty("--fill", color);
+
+        // 목표가 곡선 밖에 있어도 점선이 보이도록 스케일에 포함시킨다.
+        var lo = Math.min.apply(null, data);
+        var hi = Math.max.apply(null, data.concat([item.target]));
+        var span = hi - lo || 1;
+        var plotW = CHART_W - PAD.left - PAD.right;
+        var plotH = CHART_H - PAD.top - PAD.bottom;
+
+        var xAt = function (i) {
+            return PAD.left + (i / (data.length - 1)) * plotW;
+        };
+        var yAt = function (v) {
+            return PAD.top + (1 - (v - lo) / span) * plotH;
+        };
+
+        // 가로 눈금 3줄 + 값 라벨
+        [0, 0.5, 1].forEach(function (f) {
+            var v = lo + span * f;
+            var y = yAt(v);
+            svg.appendChild(
+                svgEl("line", { class: "chart__grid", x1: PAD.left, x2: CHART_W - PAD.right, y1: y, y2: y })
+            );
+            var t = svgEl("text", { class: "chart__label", x: PAD.left - 8, y: y + 3, "text-anchor": "end" });
+            t.textContent = num(v);
+            svg.appendChild(t);
+        });
+
+        var pts = data.map(function (v, i) {
+            return [xAt(i), yAt(v)];
+        });
+        var line = pts
+            .map(function (p) {
+                return p[0].toFixed(1) + "," + p[1].toFixed(1);
+            })
+            .join(" ");
+
+        svg.appendChild(
+            svgEl("polygon", {
+                class: "chart__area",
+                points: PAD.left + "," + (CHART_H - PAD.bottom) + " " + line + " " + (CHART_W - PAD.right) + "," + (CHART_H - PAD.bottom),
+            })
+        );
+        svg.appendChild(svgEl("polyline", { class: "chart__line", "vector-effect": "non-scaling-stroke", points: line }));
+
+        // 목표선
+        if (item.target > 0) {
+            var ty = yAt(item.target);
+            svg.appendChild(
+                svgEl("line", { class: "chart__target", x1: PAD.left, x2: CHART_W - PAD.right, y1: ty, y2: ty })
+            );
+            var tl = svgEl("text", { class: "chart__label chart__label--target", x: CHART_W - PAD.right, y: ty - 5, "text-anchor": "end" });
+            tl.textContent = "목표 " + num(item.target);
+            svg.appendChild(tl);
+        }
+
+        // 시간 눈금 4개
+        [0, 0.33, 0.66, 1].forEach(function (f) {
+            var i = Math.round(f * (data.length - 1));
+            var t = svgEl("text", {
+                class: "chart__label",
+                x: xAt(i),
+                y: CHART_H - PAD.bottom + 15,
+                "text-anchor": f === 0 ? "start" : f === 1 ? "end" : "middle",
+            });
+            t.textContent = whenLabel(timeAt(i, data.length));
+            svg.appendChild(t);
+        });
+
+        var guide = svgEl("line", { class: "chart__guide", y1: PAD.top, y2: CHART_H - PAD.bottom });
+        guide.style.display = "none";
+        svg.appendChild(guide);
+        var dot = svgEl("circle", { class: "chart__dot", r: 3 });
+        dot.style.display = "none";
+        svg.appendChild(dot);
+
+        svg.addEventListener("pointermove", function (e) {
+            var rect = svg.getBoundingClientRect();
+            if (!rect.width) return;
+            // viewBox 좌표로 환산해야 축 여백이 있어도 인덱스가 맞는다.
+            var vx = ((e.clientX - rect.left) / rect.width) * CHART_W;
+            var k = Math.max(0, Math.min(1, (vx - PAD.left) / plotW));
+            var i = Math.round(k * (data.length - 1));
+            guide.setAttribute("x1", pts[i][0]);
+            guide.setAttribute("x2", pts[i][0]);
+            guide.style.display = "";
+            dot.setAttribute("cx", pts[i][0]);
+            dot.setAttribute("cy", pts[i][1]);
+            dot.style.display = "";
+            showTip(e.clientX, rect, item, i, data);
+        });
+        svg.addEventListener("pointerleave", function () {
+            guide.style.display = "none";
+            dot.style.display = "none";
+            hideTip();
+        });
+
+        wrap.appendChild(svg);
+        return wrap;
+    }
+
+    function openDetail(item) {
+        var data = item.history || [];
+        var change = data.length > 1 ? data[data.length - 1] - data[0] : 0;
+        var short = deficit(item);
+
+        modal.icon.src = iconSrc(item);
+        modal.icon.onerror = function () {
+            modal.icon.onerror = null;
+            modal.icon.src = ICON_FALLBACK;
+        };
+        modal.name.textContent = item.name;
+        modal.group.textContent = item.group || "";
+        modal.stocked.textContent = num(item.stocked);
+        modal.target.textContent = num(item.target);
+        modal.short.textContent = short ? "−" + num(short) : "충족";
+        modal.short.className = "stat__v " + (short ? "short" : "ok");
+        modal.delta.textContent = (change > 0 ? "+" : change < 0 ? "−" : "") + num(Math.abs(change));
+        modal.delta.style.color = change < 0 ? "var(--amber)" : change > 0 ? "var(--high)" : "";
+
+        // 차트는 모달을 연 뒤에 그린다 — 닫힌 dialog 는 폭이 0이라 viewBox 를 맞출 수 없다.
+        modal.root.showModal();
+        drawChart(item);
+    }
+
+    var openItem = null;
+
+    function drawChart(item) {
+        openItem = item;
+        var w = Math.round(modal.chart.clientWidth) || 700;
+        modal.chart.textContent = "";
+        modal.chart.appendChild(buildChart(item, w));
+    }
+
+    // 창 크기가 바뀌면 viewBox 폭이 어긋나므로 다시 그린다.
+    window.addEventListener("resize", function () {
+        if (modal.root.open && openItem) drawChart(openItem);
+    });
+
+    modal.close.addEventListener("click", function () {
+        modal.root.close();
+    });
+    // 백드롭 클릭으로 닫기 — dialog 자신이 이벤트 타깃이면 바깥을 누른 것이다.
+    modal.root.addEventListener("click", function (e) {
+        if (e.target === modal.root) modal.root.close();
+    });
+    modal.root.addEventListener("close", hideTip);
+
     /* ── 렌더: 행 ───────────────────────────────────────── */
 
     function buildRow(item, index) {
@@ -443,9 +643,13 @@
         // 이름 + 그룹
         var tdName = document.createElement("td");
         tdName.className = "tbl__item";
-        var name = document.createElement("span");
+        var name = document.createElement("button");
+        name.type = "button";
         name.className = "name";
         name.textContent = item.name;
+        name.addEventListener("click", function () {
+            openDetail(item);
+        });
         var group = document.createElement("span");
         group.className = "group";
         group.textContent = item.group || "";

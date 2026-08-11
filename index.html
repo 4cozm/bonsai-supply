@@ -124,6 +124,43 @@
             </div>
         </main>
 
+        <dialog class="modal" data-modal aria-labelledby="modal-title">
+            <header class="modal__head">
+                <img class="modal__icon" data-modal-icon alt="" width="40" height="40" />
+                <div class="modal__id">
+                    <h2 class="modal__name" id="modal-title" data-modal-name></h2>
+                    <p class="modal__group" data-modal-group></p>
+                </div>
+                <button class="modal__x" type="button" data-modal-close aria-label="닫기">✕</button>
+            </header>
+
+            <dl class="modal__stats">
+                <div class="stat">
+                    <dt class="stat__k">보유</dt>
+                    <dd class="stat__v" data-modal-stocked>0</dd>
+                </div>
+                <div class="stat">
+                    <dt class="stat__k">목표</dt>
+                    <dd class="stat__v" data-modal-target>0</dd>
+                </div>
+                <div class="stat">
+                    <dt class="stat__k">부족</dt>
+                    <dd class="stat__v" data-modal-short>0</dd>
+                </div>
+                <div class="stat">
+                    <dt class="stat__k">24시간 변화</dt>
+                    <dd class="stat__v" data-modal-delta>0</dd>
+                </div>
+            </dl>
+
+            <figure class="modal__chart">
+                <div class="chart" data-modal-chart></div>
+                <figcaption class="modal__cap">
+                    10분 간격 재고 로그 · 점선은 목표 수량
+                </figcaption>
+            </figure>
+        </dialog>
+
         <div class="tip" data-tip hidden aria-hidden="true"></div>
         <p class="toast" data-toast role="status" aria-live="polite" hidden></p>
 
