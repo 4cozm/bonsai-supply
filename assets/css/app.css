@@ -878,6 +878,219 @@ select.field__input {
     font: 11px/1.5 var(--mono);
 }
 
+/* ── 저장 대기 바 ──────────────────────────────────────── */
+
+.pending {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 16px;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    padding: 10px 14px;
+    border: 1px solid var(--amber);
+    background: color-mix(in srgb, var(--amber) 8%, var(--hull));
+}
+
+.pending__msg {
+    margin: 0;
+    font: 12px/1.5 var(--mono);
+}
+.pending__msg strong {
+    color: var(--amber);
+    font-variant-numeric: tabular-nums;
+}
+
+.pending__acts {
+    display: flex;
+    gap: 8px;
+}
+
+/* 저장 전 값은 눈에 띄어야 한다 — 지금 보는 숫자가 서버 값이 아니라는 신호다. */
+.target.is-dirty {
+    color: var(--amber);
+    border-bottom-color: var(--amber);
+}
+
+.btn--ghost {
+    border-color: var(--edge);
+    color: var(--dim);
+}
+.btn--ghost:hover {
+    border-color: var(--frost);
+    background: transparent;
+    color: var(--frost);
+}
+
+/* ── 모달 공통 푸터 ────────────────────────────────────── */
+
+.modal--narrow {
+    width: min(460px, calc(100vw - 32px));
+}
+
+.modal__foot {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    padding: 12px 16px;
+    border-top: 1px solid var(--edge);
+}
+
+/* ── 변경 내역 ─────────────────────────────────────────── */
+
+.diff {
+    margin: 0;
+    padding: 6px 0;
+    max-height: 46vh;
+    overflow-y: auto;
+    list-style: none;
+}
+
+.diff__row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 16px;
+}
+
+.diff__name {
+    flex: 1;
+    min-width: 0;
+    font: 13px/1.4 var(--mono);
+    overflow-wrap: anywhere;
+}
+
+.diff__change {
+    flex: none;
+    font: 12px/1.4 var(--mono);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.diff__from {
+    color: var(--dim);
+}
+.diff__to {
+    color: var(--amber);
+}
+
+/* ── 품목 추가 ─────────────────────────────────────────── */
+
+.add__body {
+    padding: 14px 16px;
+}
+
+.add__field {
+    display: block;
+    margin-bottom: 10px;
+}
+
+.add__input {
+    display: block;
+    width: 100%;
+    margin-top: 6px;
+    padding: 10px;
+    border: 1px solid var(--edge);
+    border-radius: 0;
+    background: var(--void);
+    color: var(--frost);
+    font: 12.5px/1.6 var(--mono);
+    resize: vertical;
+}
+.add__input:focus {
+    border-color: var(--amber);
+}
+
+.add__status {
+    margin: 10px 0 0;
+    color: var(--dim);
+    font: 12px/1.5 var(--mono);
+}
+.add__status[data-tone="warn"] {
+    color: var(--amber);
+}
+
+.add__list {
+    margin: 10px 0 0;
+    padding: 0;
+    max-height: 34vh;
+    overflow-y: auto;
+    list-style: none;
+    border-top: 1px solid var(--plate);
+}
+
+.add__row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--plate);
+}
+
+.add__icon {
+    flex: none;
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--edge);
+    background: var(--void);
+}
+
+.add__name {
+    flex: 1;
+    min-width: 0;
+    font: 12.5px/1.4 var(--mono);
+    overflow-wrap: anywhere;
+}
+
+.add__meta {
+    display: block;
+    margin-top: 2px;
+    color: var(--dim);
+    font: 10.5px/1.3 var(--mono);
+}
+
+.add__row.is-missing .add__name {
+    color: var(--low);
+}
+.add__row.is-missing .add__meta {
+    color: var(--low);
+}
+
+.add__qty {
+    flex: none;
+    width: 74px;
+    padding: 5px 7px;
+    border: 1px solid var(--edge);
+    border-radius: 0;
+    background: var(--void);
+    color: var(--frost);
+    font: 12px/1.2 var(--mono);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    appearance: textfield;
+}
+.add__qty::-webkit-outer-spin-button,
+.add__qty::-webkit-inner-spin-button {
+    appearance: none;
+    margin: 0;
+}
+
+.add__drop {
+    flex: none;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 1px solid var(--edge);
+    border-radius: 0;
+    background: transparent;
+    color: var(--dim);
+    font: 11px/1 var(--mono);
+    cursor: pointer;
+}
+.add__drop:hover {
+    border-color: var(--low);
+    color: var(--low);
+}
+
 /* ── 토스트 ────────────────────────────────────────────── */
 
 .toast {

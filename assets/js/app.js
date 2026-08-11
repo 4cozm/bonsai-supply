@@ -35,6 +35,7 @@
         excluded: new Set(), // 기본은 "부족분 전부 포함", 사용자가 뺀 것만 기록한다
         unitPrices: {},
         priceSource: "—",
+        baseTarget: {}, // 저장 전 원래 목표 수량. 키가 있으면 곧 "변경됨"이다.
         sampledAt: Date.now(),
         sampleMs: 10 * 60 * 1000,
         sparkPoints: 144, // 표의 스파크라인이 그리는 표본 수 (24시간 / 10분)
@@ -56,6 +57,8 @@
         manifestLines: document.querySelector("[data-manifest-lines]"),
         manifestVolume: document.querySelector("[data-manifest-volume]"),
         manifestIsk: document.querySelector("[data-manifest-isk]"),
+        pending: document.querySelector("[data-pending]"),
+        pendingCount: document.querySelector("[data-pending-count]"),
     };
 
     /* ── 숫자 표기 ───────────────────────────────────────── */
@@ -405,6 +408,47 @@
             hit.style.display = "none";
             hideTip();
         });
+    }
+
+    /* ── 목표 수량 변경 추적 ────────────────────────────── */
+
+    /**
+     * 편집한 값은 화면에 바로 반영하되, 원래 값을 따로 들고 있는다.
+     * 부족분·매니페스트가 즉시 갱신되어야 계획을 세울 수 있고, 동시에
+     * "이건 아직 서버에 없는 값"이라는 것도 드러나야 하기 때문이다.
+     */
+    function setTarget(item, next) {
+        if (!(item.name in state.baseTarget)) state.baseTarget[item.name] = item.target;
+        item.target = next;
+        // 원래 값으로 되돌아왔으면 변경이 아니다.
+        if (state.baseTarget[item.name] === next) delete state.baseTarget[item.name];
+    }
+
+    function isDirty(item) {
+        return item.name in state.baseTarget;
+    }
+
+    function pendingChanges() {
+        return state.items
+            .filter(isDirty)
+            .map(function (item) {
+                return { item: item, from: state.baseTarget[item.name], to: item.target };
+            });
+    }
+
+    function renderPending() {
+        var changes = pendingChanges();
+        el.pending.hidden = changes.length === 0;
+        el.pendingCount.textContent = num(changes.length);
+    }
+
+    function resetTargets() {
+        state.items.forEach(function (item) {
+            if (isDirty(item)) item.target = state.baseTarget[item.name];
+        });
+        state.baseTarget = {};
+        render();
+        toast("변경을 되돌렸습니다.");
     }
 
     /* ── 선택 제스처: 클릭 = 상세, 드래그 = 다중 선택 ───── */
@@ -964,9 +1008,10 @@
         input.className = "target";
         input.value = String(item.target);
         input.setAttribute("aria-label", item.name + " 목표 수량");
+        if (isDirty(item)) input.classList.add("is-dirty");
         input.addEventListener("change", function () {
             var next = parseInt(input.value, 10);
-            item.target = isNaN(next) || next < 0 ? 0 : next;
+            setTarget(item, isNaN(next) || next < 0 ? 0 : next);
             render();
         });
         tdQty.appendChild(input);
@@ -1067,7 +1112,242 @@
         }
 
         renderManifest();
+        renderPending();
         state.firstPaint = false;
+    }
+
+    /* ── 저장 확인 모달 ─────────────────────────────────── */
+
+    var saveModal = {
+        root: document.querySelector("[data-save-modal]"),
+        list: document.querySelector("[data-save-list]"),
+        confirm: document.querySelector("[data-save-confirm]"),
+    };
+
+    function openSaveModal() {
+        var changes = pendingChanges();
+        if (!changes.length) return;
+
+        saveModal.list.textContent = "";
+        changes.forEach(function (c) {
+            var li = document.createElement("li");
+            li.className = "diff__row";
+
+            var name = document.createElement("span");
+            name.className = "diff__name";
+            name.textContent = c.item.name;
+
+            var change = document.createElement("span");
+            change.className = "diff__change";
+            var from = document.createElement("span");
+            from.className = "diff__from";
+            from.textContent = num(c.from) + "개";
+            var to = document.createElement("span");
+            to.className = "diff__to";
+            to.textContent = num(c.to) + "개";
+            change.appendChild(from);
+            change.appendChild(document.createTextNode(" → "));
+            change.appendChild(to);
+
+            li.appendChild(name);
+            li.appendChild(change);
+            saveModal.list.appendChild(li);
+        });
+
+        saveModal.root.showModal();
+    }
+
+    function commitTargets() {
+        var changes = pendingChanges();
+        // TODO: 백엔드 연결 시 여기서 PATCH /api/targets 를 보낸다.
+        // 지금은 성공했다고 가정하고 로컬 상태만 확정한다.
+        state.baseTarget = {};
+        saveModal.root.close();
+        render();
+        toast(num(changes.length) + "건을 저장했습니다.");
+    }
+
+    /* ── 품목 추가 모달 ─────────────────────────────────── */
+
+    var addModal = {
+        root: document.querySelector("[data-add-modal]"),
+        text: document.querySelector("[data-add-text]"),
+        check: document.querySelector("[data-add-check]"),
+        status: document.querySelector("[data-add-status]"),
+        list: document.querySelector("[data-add-list]"),
+        confirm: document.querySelector("[data-add-confirm]"),
+    };
+
+    // 확인 결과. { typeId, name, language, qty } 또는 { name, missing: true }
+    var addRows = [];
+
+    function setAddStatus(text, tone) {
+        addModal.status.hidden = !text;
+        addModal.status.textContent = text || "";
+        if (tone) addModal.status.setAttribute("data-tone", tone);
+        else addModal.status.removeAttribute("data-tone");
+    }
+
+    function renderAddRows() {
+        addModal.list.textContent = "";
+
+        addRows.forEach(function (row, index) {
+            var li = document.createElement("li");
+            li.className = "add__row" + (row.missing ? " is-missing" : "");
+
+            if (row.missing) {
+                var mark = document.createElement("span");
+                mark.className = "add__icon";
+                li.appendChild(mark);
+            } else {
+                var img = document.createElement("img");
+                img.className = "add__icon";
+                img.width = 28;
+                img.height = 28;
+                img.alt = "";
+                img.src = ICON_BASE + row.typeId + "/icon?size=64";
+                img.addEventListener("error", function once() {
+                    img.removeEventListener("error", once);
+                    img.src = ICON_FALLBACK;
+                });
+                li.appendChild(img);
+            }
+
+            var name = document.createElement("span");
+            name.className = "add__name";
+            name.textContent = row.name;
+            var meta = document.createElement("span");
+            meta.className = "add__meta";
+            meta.textContent = row.missing
+                ? "이브에서 찾을 수 없는 이름입니다"
+                : "#" + row.typeId + " · " + (row.language === "ko" ? "한글" : "영문");
+            name.appendChild(meta);
+            li.appendChild(name);
+
+            if (!row.missing) {
+                var qty = document.createElement("input");
+                qty.type = "number";
+                qty.min = "0";
+                qty.className = "add__qty";
+                qty.value = String(row.qty);
+                qty.setAttribute("aria-label", row.name + " 목표 수량");
+                qty.addEventListener("change", function () {
+                    var v = parseInt(qty.value, 10);
+                    row.qty = isNaN(v) || v < 0 ? 0 : v;
+                });
+                li.appendChild(qty);
+            }
+
+            var drop = document.createElement("button");
+            drop.type = "button";
+            drop.className = "add__drop";
+            drop.textContent = "✕";
+            drop.setAttribute("aria-label", row.name + " 목록에서 빼기");
+            drop.addEventListener("click", function () {
+                addRows.splice(index, 1);
+                renderAddRows();
+            });
+            li.appendChild(drop);
+
+            addModal.list.appendChild(li);
+        });
+
+        var missing = addRows.filter(function (r) {
+            return r.missing;
+        }).length;
+        var ok = addRows.length - missing;
+
+        // 찾을 수 없는 이름이 하나라도 남아 있으면 저장을 막는다. 백엔드에 쓰레기를
+        // 보내는 것보다, 여기서 사용자가 오타를 고치거나 빼는 편이 낫다.
+        addModal.confirm.disabled = ok === 0 || missing > 0;
+
+        if (missing) {
+            setAddStatus(
+                missing + "개를 찾을 수 없습니다. 이름을 고치거나 목록에서 빼야 추가할 수 있습니다.",
+                "warn"
+            );
+        } else if (ok) {
+            setAddStatus(ok + "개를 확인했습니다.");
+        } else {
+            setAddStatus("");
+        }
+    }
+
+    function checkAddNames() {
+        var parsed = window.BonsaiEsi.parseLines(addModal.text.value);
+        if (!parsed.length) {
+            addRows = [];
+            renderAddRows();
+            setAddStatus("추가할 품목을 입력하세요.", "warn");
+            return;
+        }
+
+        // 이미 추적 중인 품목은 걸러낸다 — 목표 수량 변경은 표에서 하면 된다.
+        var known = Object.create(null);
+        state.items.forEach(function (i) {
+            known[String(i.name).toLowerCase()] = true;
+            if (i.typeId) known["#" + i.typeId] = true;
+        });
+
+        addModal.check.disabled = true;
+        setAddStatus("이브에서 확인하는 중…");
+
+        var names = parsed.map(function (p) {
+            return p.name;
+        });
+
+        window.BonsaiEsi.resolveNames(names).then(
+            function (res) {
+                addRows = [];
+                parsed.forEach(function (p) {
+                    var hit = res.found[p.name.toLowerCase()];
+                    if (!hit) {
+                        addRows.push({ name: p.name, missing: true });
+                        return;
+                    }
+                    if (known[hit.name.toLowerCase()] || known["#" + hit.id]) return; // 이미 추적 중
+                    addRows.push({
+                        typeId: hit.id,
+                        name: hit.name,
+                        language: hit.language,
+                        qty: p.qty == null ? 0 : p.qty,
+                    });
+                });
+                addModal.check.disabled = false;
+                renderAddRows();
+            },
+            function (err) {
+                addModal.check.disabled = false;
+                setAddStatus("이브에 연결하지 못했습니다: " + (err && err.message), "warn");
+            }
+        );
+    }
+
+    function commitAdd() {
+        var added = addRows.filter(function (r) {
+            return !r.missing;
+        });
+        if (!added.length) return;
+
+        // TODO: 백엔드 연결 시 POST /api/items. 지금은 로컬 목록에만 넣는다.
+        added.forEach(function (r) {
+            state.items.push({
+                typeId: r.typeId,
+                name: r.name,
+                group: "",
+                stocked: 0,
+                target: r.qty,
+                unitVolume: 0, // 실제 값은 백엔드가 ESI packaged_volume 으로 채운다
+                history: [],
+            });
+        });
+
+        addModal.root.close();
+        addRows = [];
+        addModal.text.value = "";
+        renderAddRows();
+        render();
+        toast(num(added.length) + "개를 목록에 추가했습니다.");
     }
 
     /* ── 토스트 ─────────────────────────────────────────── */
@@ -1130,6 +1410,36 @@
     });
 
     el.copy.addEventListener("click", copyManifest);
+
+    document.querySelector("[data-pending-save]").addEventListener("click", openSaveModal);
+    document.querySelector("[data-pending-reset]").addEventListener("click", resetTargets);
+    saveModal.confirm.addEventListener("click", commitTargets);
+    document.querySelectorAll("[data-save-cancel]").forEach(function (b) {
+        b.addEventListener("click", function () {
+            saveModal.root.close();
+        });
+    });
+
+    document.querySelector("[data-add-open]").addEventListener("click", function () {
+        addRows = [];
+        renderAddRows();
+        setAddStatus("");
+        addModal.root.showModal();
+        addModal.text.focus();
+    });
+    addModal.check.addEventListener("click", checkAddNames);
+    addModal.confirm.addEventListener("click", commitAdd);
+    document.querySelectorAll("[data-add-cancel]").forEach(function (b) {
+        b.addEventListener("click", function () {
+            addModal.root.close();
+        });
+    });
+    // 백드롭 클릭으로 닫기
+    [saveModal.root, addModal.root].forEach(function (d) {
+        d.addEventListener("click", function (e) {
+            if (e.target === d) d.close();
+        });
+    });
 
     /* ── 시작 ───────────────────────────────────────────── */
 

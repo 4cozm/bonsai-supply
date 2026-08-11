@@ -58,6 +58,22 @@
                                     autocomplete="off"
                                 />
                             </label>
+                            <button class="btn btn--ghost" type="button" data-add-open>
+                                품목 추가
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="pending" data-pending hidden>
+                        <p class="pending__msg">
+                            저장하지 않은 목표 수량 변경
+                            <strong data-pending-count>0</strong>건
+                        </p>
+                        <div class="pending__acts">
+                            <button class="btn btn--ghost" type="button" data-pending-reset>
+                                되돌리기
+                            </button>
+                            <button class="btn" type="button" data-pending-save>변경 저장</button>
                         </div>
                     </div>
 
@@ -178,11 +194,64 @@
             </figure>
         </dialog>
 
+        <dialog class="modal modal--narrow" data-save-modal aria-labelledby="save-title">
+            <header class="modal__head">
+                <div class="modal__id">
+                    <h2 class="modal__name" id="save-title">목표 수량 변경</h2>
+                    <p class="modal__group">저장하면 서버에 반영됩니다.</p>
+                </div>
+                <button class="modal__x" type="button" data-save-cancel aria-label="닫기">✕</button>
+            </header>
+
+            <ul class="diff" data-save-list></ul>
+
+            <footer class="modal__foot">
+                <button class="btn btn--ghost" type="button" data-save-cancel>취소</button>
+                <button class="btn" type="button" data-save-confirm>저장</button>
+            </footer>
+        </dialog>
+
+        <dialog class="modal" data-add-modal aria-labelledby="add-title">
+            <header class="modal__head">
+                <div class="modal__id">
+                    <h2 class="modal__name" id="add-title">품목 추가</h2>
+                    <p class="modal__group">
+                        이브에서 아이템을 복사해 붙여넣거나, 직접 입력하세요. 한글·영문 모두
+                        됩니다.
+                    </p>
+                </div>
+                <button class="modal__x" type="button" data-add-cancel aria-label="닫기">✕</button>
+            </header>
+
+            <div class="add__body">
+                <label class="add__field">
+                    <span class="field__label">한 줄에 한 품목</span>
+                    <textarea
+                        class="add__input"
+                        data-add-text
+                        rows="6"
+                        spellcheck="false"
+                        placeholder="중력장 ECM II&#9;40&#10;Hobgoblin II&#9;300&#10;Damage Control II"
+                    ></textarea>
+                </label>
+                <button class="btn btn--ghost" type="button" data-add-check>이브에서 확인</button>
+
+                <p class="add__status" data-add-status hidden></p>
+                <ul class="add__list" data-add-list></ul>
+            </div>
+
+            <footer class="modal__foot">
+                <button class="btn btn--ghost" type="button" data-add-cancel>취소</button>
+                <button class="btn" type="button" data-add-confirm disabled>목록에 추가</button>
+            </footer>
+        </dialog>
+
         <div class="tip" data-tip hidden aria-hidden="true"></div>
         <p class="toast" data-toast role="status" aria-live="polite" hidden></p>
 
         <script src="assets/js/data.mock.js"></script>
         <script src="assets/js/pricing.js"></script>
+        <script src="assets/js/esi.js"></script>
         <script src="assets/js/app.js"></script>
     </body>
 </html>
