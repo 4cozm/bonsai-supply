@@ -1,76 +1,114 @@
 /**
  * 시세 조회 어댑터.
  *
- * 정적 사이트에서 브라우저가 서드파티 시세 API를 직접 호출하려면 두 가지가 성립해야 했다.
+ * **가짜 숫자를 채우지 않는다.** 예전엔 typeId 가 없거나 조회가 실패한 품목을 그럴듯한
+ * 목업 숫자로 채워 "자릿수 감각"만 남기려 했는데, 시세는 계속 바뀌는 값이라 그 숫자가
+ * 진짜처럼 보이면 사용자가 그걸 근거로 판단할 수 있다 — 없으면 없다고 보이는 게 맞다.
+ * 그래서 값을 모르는 품목은 unitPrices 에서 아예 키를 뺀다. 화면은 그 경우 기존 규칙대로
+ * "—" 를 보여 준다(app.js 의 isk() 참고). 실패 자체는 source 문자열과 ok 플래그로
+ * 눈에 띄게 알린다 — app.js 가 이걸로 상단 표시를 경고 톤으로 바꾼다.
  *
- *   1. CORS — 응답에 우리 origin을 허용하는 헤더가 있어야 한다. 없으면 브라우저가 막는다.
- *   2. 레이트리밋 — 호출이 사용자 브라우저마다 따로 나간다. 서버 한 곳에서 나가는 게 아니다.
+ * Fuzzwork market aggregates 를 쓴다. 실측으로 확인했다:
  *
- * 두 후보를 실측했다.
+ *   GET https://market.fuzzwork.co.uk/aggregates/?station=60003760&types=2456,2488,...
+ *   Access-Control-Allow-Origin: *      ← 있음, 키 불필요
  *
- *   - Janice — 매니페스트를 통째로 감정(appraisal)하는 방식이라 매력적이었지만 탈락.
- *     `Access-Control-Allow-Origin` 헤더가 아예 없어 브라우저에서 못 친다. 게다가 API 키가
- *     Discord DM 으로 받는 개인 발급이고, 본인 이름에 안 묶인 키를 쓰면 예고 없이 차단될
- *     수 있다고 문서에 명시돼 있다 — 정적 프론트에 박아 두면 방문자 전원이 그 키를 보게
- *     되므로 애초에 쓸 수 없는 방식이다.
- *   - Fuzzwork market aggregates — `Access-Control-Allow-Origin: *` 확인됨, 키 불필요.
- *     typeId 를 콤마로 이어 한 번에 배치 조회된다(15개 응답 1.2초, 6KB). station=60003760 은
- *     Jita IV-4 CNAP, 이 앱이 다루는 물류 기준점과 일치한다.
+ * typeId 를 콤마로 이어 **한 번에 배치 조회**한다 — 개별 typeId 마다 따로 부르면 429
+ * (레이트리밋)를 벌기 딱 좋다. 15개를 한 번에 받는 데 1.2초, 6KB(실측). station=60003760은
+ * Jita IV-4 CNAP — 이 앱이 다루는 물류 기준점과 일치한다. 값은 `sell.percentile`을 쓴다 —
+ * 상/하위 이상치를 걸러낸 값이라 최저/최고가보다 시세 조작에 덜 흔들린다.
  *
- * CCP 공식이 아닌 커뮤니티 서비스라 SLA 는 없다. 그래서 fetchPrices() 실패 시 이전에
- * 받아 둔 가격을 그대로 두고 조용히 넘어간다 — 시세 갱신 실패로 매니페스트가 못 쓰게
- * 되면 안 된다. 목업 provider 는 그대로 남겨 뒀다: typeId 가 아직 없는 로컬 추가 품목이나,
- * Fuzzwork 이 죽었을 때의 폴백으로 쓴다.
+ * Janice는 후보에서 뺐다. `Access-Control-Allow-Origin` 헤더가 아예 없어 브라우저에서
+ * 못 치고, API 키가 Discord DM 으로 받는 개인 발급이라 정적 프론트에 박아 두면 방문자
+ * 전원이 그 키를 보게 된다.
+ *
+ * Fuzzwork 이 실패하면 ESI `/markets/prices/` 로 폴백한다. EVE Tycoon·adam4eve 도 실측
+ * 해 봤는데 응답은 오지만 `Access-Control-Allow-Origin` 이 없어 브라우저에서 못 읽는다.
+ * EVE Ref 의 시장 데이터는 리전 전체 주문서를 통째로 덤프하는 파일이라(30분마다 스크랩)
+ * 품목 몇 개 가격 받자고 쓸 도구가 아니다. ESI 는 CORS 가 열려 있고 CCP 공식이라 이
+ * 셋보다 안 죽을 가능성이 높으며, 요청 한 번에 게임 전체 가격이 다 온다(배치할 필요가
+ * 아예 없다).
+ *
+ * 다만 이 값은 성격이 다르다 — Fuzzwork 의 `sell.percentile` 은 "지금 지타에서 제일 싼
+ * 매도 호가"지만, ESI 의 `average_price` 는 매끄럽게 평균낸 값이라 실시간 거래가와
+ * 다르다. 그래서 같은 방식으로 조용히 채우면 이 파일 맨 위에서 말한 원칙("모르는 값을
+ * 그럴듯하게 채우지 않는다")을 또 어기게 된다. source 문자열과 별도의 approx 플래그로
+ * "이 숫자는 다른 종류"라는 걸 표시하고, app.js 가 이걸로 단가 줄에 물결표(~)를 붙인다.
  */
 (function () {
     "use strict";
 
     var FUZZWORK_URL = "https://market.fuzzwork.co.uk/aggregates/";
     var JITA_4_4_STATION = 60003760;
+    var ESI_PRICES_URL = "https://esi.evetech.net/latest/markets/prices/?datasource=tranquility";
 
     /**
-     * 목업 provider. typeId가 없는 품목(로컬로만 추가돼 아직 백엔드 확정 전인 경우)이나
-     * 실 시세 조회가 실패했을 때의 폴백이다. 이름을 시드로 삼아 안정적인 값을 만들 뿐
-     * 실제 시세가 아니다 — 자릿수 감각만 맞춘다.
+     * ESI 전체 가격 목록 폴백. 응답이 15,890개 전 품목을 한 번에 담고 있어 typeId 별로
+     * 나눠 부를 필요가 없다 — station 파라미터도 없다(지역 시장 개념이 아니라 게임 전체
+     * 기준 참고값이라서). average_price 를 쓴다: adjusted_price 는 보험금 산정용이라
+     * "얼마면 살 수 있나"라는 이 화면의 질문과 더 멀다.
      */
-    function mockProvider(items) {
-        function seedOf(name) {
-            var h = 2166136261;
-            for (var i = 0; i < name.length; i++) {
-                h ^= name.charCodeAt(i);
-                h = Math.imul(h, 16777619);
-            }
-            return (h >>> 0) / 4294967296;
+    function esiFallbackProvider(items) {
+        var priced = items.filter(function (i) {
+            return i.typeId > 0;
+        });
+        if (!priced.length) {
+            return Promise.resolve({
+                source: "가격 조회 대상 없음",
+                ok: true,
+                approx: false,
+                pricedAt: new Date(),
+                unitPrices: {},
+            });
         }
 
-        var prices = {};
-        items.forEach(function (item) {
-            var r = seedOf(item.name);
-            // 부피가 큰 물건은 대체로 비싸다 — 함선과 탄약의 자릿수를 갈라 놓기 위한 근사.
-            var base = item.unitVolume >= 1000 ? 180e6 : item.unitVolume >= 1 ? 8e5 : 90;
-            prices[item.name] = Math.round(base * (0.55 + r * 0.9));
-        });
+        return fetch(ESI_PRICES_URL)
+            .then(function (r) {
+                if (!r.ok) throw new Error("ESI " + r.status);
+                return r.json();
+            })
+            .then(function (rows) {
+                var byType = {};
+                rows.forEach(function (row) {
+                    if (row.average_price) byType[row.type_id] = row.average_price;
+                });
 
-        return Promise.resolve({
-            source: "목업",
-            pricedAt: null,
-            unitPrices: prices,
-        });
+                var prices = {};
+                var missing = 0;
+                priced.forEach(function (item) {
+                    var p = byType[item.typeId];
+                    if (!p) {
+                        missing++;
+                        return;
+                    }
+                    prices[item.name] = p;
+                });
+
+                return {
+                    source: "ESI 평균가(참고용, 실시간 아님)" + (missing ? " · " + missing + "개 가격 없음" : ""),
+                    ok: true,
+                    approx: true,
+                    pricedAt: new Date(),
+                    unitPrices: prices,
+                };
+            });
     }
 
-    /**
-     * Fuzzwork market aggregates. typeId 가 있는 품목만 실가 조회하고, 없는 품목은
-     * 목업으로 채워 자릿수 감각이라도 남긴다 — 표 전체가 "—"로 비는 것보다 낫다.
-     */
     function fuzzworkProvider(items) {
         var priced = items.filter(function (i) {
             return i.typeId > 0;
         });
-        var unpriced = items.filter(function (i) {
-            return !(i.typeId > 0);
-        });
+        var unpricedCount = items.length - priced.length;
 
-        if (!priced.length) return mockProvider(unpriced);
+        if (!priced.length) {
+            return Promise.resolve({
+                source: "가격 조회 대상 없음",
+                ok: true,
+                approx: false,
+                pricedAt: new Date(),
+                unitPrices: {},
+            });
+        }
 
         // typeId 는 중복될 수 없지만, 같은 typeId 를 가리키는 로컬 품목이 두 개면(이론상)
         // 응답 하나를 여러 이름에 매핑해야 하므로 typeId → 이름 배열로 모아 둔다.
@@ -88,40 +126,52 @@
             })
             .then(function (data) {
                 var prices = {};
+                var noQuote = 0;
                 typeIds.forEach(function (id) {
                     var row = data[id];
-                    // percentile 은 상위/하위 이상치를 걸러낸 실거래 기준값이라 단순 최저/최고가
-                    // 보다 조작에 덜 흔들린다 — EVE 시세 도구들이 대체로 이 값을 "시세"로 쓴다.
                     var p = row && row.sell && parseFloat(row.sell.percentile);
-                    if (!p) return; // 매도 호가가 없는 품목(비유동적)은 조용히 건너뛴다
+                    if (!p) {
+                        noQuote++; // 매도 호가가 없는(비유동적인) 품목 — 값을 지어내지 않는다
+                        return;
+                    }
                     namesByType[id].forEach(function (name) {
                         prices[name] = p;
                     });
                 });
 
-                if (unpriced.length) {
-                    return mockProvider(unpriced).then(function (fallback) {
-                        return {
-                            source: "Fuzzwork(지타 매도)",
-                            pricedAt: new Date(),
-                            unitPrices: Object.assign({}, fallback.unitPrices, prices),
-                        };
-                    });
-                }
-                return { source: "Fuzzwork(지타 매도)", pricedAt: new Date(), unitPrices: prices };
+                var missing = unpricedCount + noQuote;
+                return {
+                    source: "Fuzzwork(지타 매도)" + (missing ? " · " + missing + "개 가격 없음" : ""),
+                    ok: true,
+                    approx: false,
+                    pricedAt: new Date(),
+                    unitPrices: prices,
+                };
             });
     }
 
     window.BonsaiPricing = {
         /**
          * @param {Array<{name: string, typeId: number, unitVolume: number}>} items
-         * @returns {Promise<{source: string, pricedAt: Date|null, unitPrices: Record<string, number>}>}
-         *          unitPrices 는 품목명 → 개당 Jita 매도가(ISK). 값이 없는 품목은 키가 없다.
+         * @returns {Promise<{source: string, ok: boolean, approx: boolean, pricedAt: Date|null, unitPrices: Record<string, number>}>}
+         *          unitPrices 는 품목명 → 개당 ISK. 값을 모르는 품목은 키가 아예 없다
+         *          (0 이 아니다) — 화면은 이를 "—" 로 보여 준다.
+         *          approx 가 true 면 실시간 매도가가 아니라 ESI 평균값 폴백이 쓰였다는
+         *          뜻이다 — app.js 가 이걸로 단가 표시에 물결표를 붙인다.
+         *          ok 가 false 면 Fuzzwork·ESI 폴백 둘 다 실패한 것이고 unitPrices 는
+         *          비어 있다. 그 경우 이전에 받아 둔 값을 지울지는 호출부(app.js)가 정한다.
          */
         fetchPrices: function (items) {
             return fuzzworkProvider(items).catch(function () {
-                // Fuzzwork 이 죽었거나 네트워크가 막혔을 때의 마지막 방어선.
-                return mockProvider(items);
+                return esiFallbackProvider(items).catch(function (err) {
+                    return {
+                        source: "가격 조회 실패" + (err && err.message ? " (" + err.message + ")" : ""),
+                        ok: false,
+                        approx: false,
+                        pricedAt: null,
+                        unitPrices: {},
+                    };
+                });
             });
         },
     };

@@ -224,6 +224,21 @@ select.field__input {
     font: 11px/1.5 var(--mono);
     letter-spacing: 0.04em;
 }
+/* 시세 조회 실패를 캡션 톤만으로 흘려보내지 않는다 — 계속 바뀌는 값이라 못 받았다는
+   사실이 조용히 묻히면 사용자가 오래된 비용을 진짜인 줄 알고 판단할 수 있다. */
+.note.is-warn {
+    color: var(--low);
+}
+.note.is-warn [data-price-source] {
+    font-weight: 600;
+}
+/* 완전 실패(빨강)와 구분되는 상태 — 값은 있지만 실시간 매도가가 아닌 다른 종류다. */
+.note.is-approx {
+    color: var(--amber);
+}
+.note.is-approx [data-price-source] {
+    font-weight: 600;
+}
 .note__sep {
     padding: 0 6px;
 }

@@ -35,7 +35,9 @@
         included: new Set(), // 기본은 "전부 미포함", 사용자가 고른 것만 기록한다
         manifestQty: {}, // 매니페스트 수량 오버라이드. 없으면 부족분 전체가 기본이다.
         unitPrices: {},
-        priceSource: "—",
+        priceSource: "조회 중…",
+        priceOk: true,
+        priceApprox: false, // true 면 Fuzzwork 실시간 매도가가 아니라 ESI 평균값 폴백
         baseTarget: {}, // 저장 전 원래 목표 수량. 키가 있으면 곧 "변경됨"이다.
         sort: { key: "days", asc: true },
         sampledAt: Date.now(),
@@ -55,6 +57,7 @@
         hangar: document.getElementById("hangar"),
         sync: document.querySelector("[data-sync]"),
         priceSource: document.querySelector("[data-price-source]"),
+        priceNote: document.querySelector(".note"),
         historyWindow: document.querySelector("[data-history-window]"),
         sampleMinutes: document.querySelector("[data-sample-minutes]"),
         manifestLines: document.querySelector("[data-manifest-lines]"),
@@ -98,6 +101,16 @@
     function iskTotal(n) {
         var s = isk(n);
         return s.slice(-4) === " isk" ? s.slice(0, -4) + " ISK" : s + " ISK";
+    }
+
+    /**
+     * 단가 줄(테이블 셀 안, 개당 가격)의 표기. state.priceApprox 면 물결표를 붙인다 —
+     * 상단 캡션만 바꾸면 표만 보고 스크롤을 안 올리는 사람은 "실시간이 아니다"를
+     * 놓친다. 숫자가 나오는 자리마다 표시해야 실제로 눈에 띈다.
+     */
+    function unitPriceLabel(n) {
+        if (!n) return "";
+        return (state.priceApprox ? "~" : "") + isk(n);
     }
 
     /** "8/10 19:30" — ko-KR 기본 포맷("8. 10. 19:30")은 마침표가 많아 표에서 지저분하다. */
@@ -269,9 +282,20 @@
     function loadPrices() {
         if (!window.BonsaiPricing) return;
         window.BonsaiPricing.fetchPrices(state.items).then(function (result) {
-            state.unitPrices = result.unitPrices || {};
+            // 실패하면 이전에 받아 둔 값(있다면)을 지우지 않는다 — 나중에 주기적 재조회를
+            // 붙였을 때, 일시적 실패로 화면의 모든 비용이 "—"로 사라지는 것보다 낫다.
+            // 첫 로드 실패라면 어차피 아직 아무 값도 없었으니 차이가 없다.
+            if (result.ok) state.unitPrices = result.unitPrices || {};
             state.priceSource = result.source || "—";
+            state.priceOk = result.ok !== false;
+            state.priceApprox = !!result.approx;
             render();
+            // 캡션 톤만으로는 놓치기 쉽다 — 발생한 순간 한 번은 명시적으로 알린다.
+            if (!state.priceOk) {
+                toast("시세 조회에 실패했습니다. 예상 비용이 최신이 아닐 수 있습니다.", "warn");
+            } else if (state.priceApprox) {
+                toast("실시간 시세를 받지 못해 ESI 평균가로 대신합니다.", "warn");
+            }
         });
     }
 
@@ -1172,7 +1196,7 @@
         total.textContent = short ? isk(lineCost(item)) : "—";
         var unit = document.createElement("span");
         unit.className = "isk__unit";
-        unit.textContent = unitPrice(item) ? isk(unitPrice(item)) + " /개" : "";
+        unit.textContent = unitPrice(item) ? unitPriceLabel(unitPrice(item)) + " /개" : "";
         tdIsk.appendChild(total);
         tdIsk.appendChild(unit);
         tr.appendChild(tdIsk);
@@ -1257,7 +1281,7 @@
         cost.textContent = isk(manifestLineCost(item));
         var unit = document.createElement("span");
         unit.className = "mcost__unit";
-        unit.textContent = unitPrice(item) ? isk(unitPrice(item)) + "/개" : "";
+        unit.textContent = unitPrice(item) ? unitPriceLabel(unitPrice(item)) + "/개" : "";
         tdCost.appendChild(cost);
         tdCost.appendChild(unit);
         tr.appendChild(tdCost);
@@ -1310,6 +1334,11 @@
         var items = visibleItems();
 
         el.priceSource.textContent = state.priceSource;
+        // 조회 실패/근사값은 캡션 텍스트만으로는 눈에 안 띄니 톤을 바꿔 잡아 준다 — 시세는
+        // 계속 바뀌는 값이라 "지금 값이 실시간이 아니다"는 사실이 조용히 묻히면 안 된다.
+        // is-warn(빨강)은 완전 실패, is-approx(주황)는 다른 종류의 값으로 대체된 상태다.
+        el.priceNote.classList.toggle("is-warn", !state.priceOk);
+        el.priceNote.classList.toggle("is-approx", state.priceOk && state.priceApprox);
 
         el.rows.textContent = "";
         items.forEach(function (item, i) {
