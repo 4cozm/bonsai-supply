@@ -1,0 +1,850 @@
+/* Bonsai Supply — 행어 재고 콘솔
+   냉랭한 슬레이트 위에 앰버 하나. 앰버는 "부족"에만 쓴다. 다른 곳에 쓰면 의미가 죽는다. */
+
+:root {
+    --void: #0b0f14;
+    --hull: #131a22;
+    --plate: #1c2530;
+    --edge: #263241;
+    --frost: #c7d3e0;
+    --dim: #6f8296;
+    --amber: #e8a33d;
+    --teal: #3fb6c4;
+
+    /* 재고 수준 램프: 적으면 레드 → 앰버 → 많으면 그린. JS가 이 셋 사이를 보간한다. */
+    --low: #e05b4f;
+    --mid: #e8a33d;
+    --high: #52b788;
+
+    --mono: ui-monospace, "Cascadia Mono", "Consolas", "SF Mono", "Menlo", monospace;
+    --cond: "Roboto Condensed", "Arial Narrow", "Helvetica Neue Condensed", "Segoe UI", sans-serif;
+    --sans: ui-sans-serif, "Segoe UI", system-ui, sans-serif;
+
+    --gut: 20px;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html {
+    background: var(--void);
+}
+
+body {
+    margin: 0;
+    background: var(--void);
+    color: var(--frost);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+    outline: 2px solid var(--amber);
+    outline-offset: 2px;
+}
+
+.vh {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+.skip {
+    position: absolute;
+    left: -9999px;
+    top: 0;
+    z-index: 20;
+    padding: 10px 14px;
+    background: var(--amber);
+    color: var(--void);
+    font: 600 13px/1 var(--sans);
+}
+.skip:focus {
+    left: 0;
+}
+
+/* ── 상단 레일 ─────────────────────────────────────────── */
+
+.rail {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px var(--gut);
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px var(--gut);
+    border-bottom: 1px solid var(--edge);
+    background: var(--hull);
+}
+
+.rail__brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+.rail__mark {
+    width: 10px;
+    height: 10px;
+    border: 1px solid var(--teal);
+    border-left-width: 3px;
+    flex: none;
+}
+
+.rail__name {
+    font-family: var(--cond);
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+}
+
+.rail__tenant {
+    padding: 2px 7px;
+    border: 1px solid var(--edge);
+    color: var(--dim);
+    font: 600 11px/1.5 var(--mono);
+    letter-spacing: 0.1em;
+}
+
+.rail__controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px 18px;
+}
+
+.rail__sync {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin: 0;
+    color: var(--dim);
+    font: 12px/1 var(--mono);
+}
+
+.rail__pulse {
+    width: 6px;
+    height: 6px;
+    background: var(--teal);
+    flex: none;
+    animation: pulse 3.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%,
+    100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.25;
+    }
+}
+
+/* ── 폼 요소 ───────────────────────────────────────────── */
+
+.field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+.field--grow {
+    flex: 1 1 180px;
+}
+
+.field__label {
+    color: var(--dim);
+    font: 11px/1 var(--mono);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.field__input {
+    min-width: 0;
+    width: 100%;
+    padding: 7px 10px;
+    border: 1px solid var(--edge);
+    border-radius: 0;
+    background: var(--void);
+    color: var(--frost);
+    font: 13px/1.2 var(--mono);
+    appearance: none;
+}
+.field__input:hover {
+    border-color: var(--dim);
+}
+.field__input::placeholder {
+    color: var(--dim);
+}
+select.field__input {
+    padding-right: 26px;
+    background-image: linear-gradient(45deg, transparent 50%, var(--dim) 50%),
+        linear-gradient(135deg, var(--dim) 50%, transparent 50%);
+    background-position: calc(100% - 14px) 50%, calc(100% - 9px) 50%;
+    background-size: 5px 5px;
+    background-repeat: no-repeat;
+}
+
+/* ── 페이지 ────────────────────────────────────────────── */
+
+.page {
+    max-width: 1320px;
+    margin: 0 auto;
+    padding: 32px var(--gut) 72px;
+}
+
+/* ── 레이아웃 ──────────────────────────────────────────── */
+
+.grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 340px;
+    gap: 28px;
+    align-items: start;
+    margin-top: 4px;
+}
+
+.note {
+    margin: 0 0 10px;
+    color: var(--dim);
+    font: 11px/1.5 var(--mono);
+    letter-spacing: 0.04em;
+}
+.note__sep {
+    padding: 0 6px;
+}
+
+/* ── 재고 테이블 ───────────────────────────────────────── */
+
+.stock__head {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 18px;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+}
+
+.stock__title {
+    margin: 0;
+    font-family: var(--cond);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--dim);
+}
+
+.stock__tools {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    flex: 1 1 320px;
+    max-width: 520px;
+    justify-content: flex-end;
+}
+
+.segbtn {
+    display: flex;
+    border: 1px solid var(--edge);
+}
+
+.segbtn__b {
+    padding: 7px 13px;
+    border: 0;
+    border-left: 1px solid var(--edge);
+    background: transparent;
+    color: var(--dim);
+    font: 12px/1.2 var(--mono);
+    letter-spacing: 0.06em;
+    cursor: pointer;
+}
+.segbtn__b:first-child {
+    border-left: 0;
+}
+.segbtn__b:hover {
+    color: var(--frost);
+    background: var(--plate);
+}
+.segbtn__b.is-on {
+    background: var(--plate);
+    color: var(--frost);
+    box-shadow: inset 0 -2px 0 var(--teal);
+}
+
+.tablewrap {
+    border: 1px solid var(--edge);
+    background: var(--hull);
+    overflow-x: auto;
+}
+
+.tbl {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.tbl th {
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--edge);
+    color: var(--dim);
+    font: 11px/1.3 var(--mono);
+    font-weight: 400;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.tbl td {
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--plate);
+    vertical-align: middle;
+}
+.tbl tbody tr:last-child td {
+    border-bottom: 0;
+}
+.tbl tbody tr:hover td {
+    background: var(--plate);
+}
+
+/* `.tbl th`(0,1,1)가 `.tbl__n`(0,1,0)을 이겨서 헤더만 왼쪽으로 붙던 자리다.
+   숫자 헤더는 아래 값과 같은 오른쪽 기준선에 서야 한다. */
+.tbl th.tbl__n,
+.tbl td.tbl__n {
+    text-align: right;
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.tbl__pick {
+    width: 34px;
+}
+/* 고정폭 열이 많아서, 이름이 먼저 쥐어짜인다. 바닥을 깔아 3줄로 쪼개지지 않게 한다. */
+.tbl__item {
+    min-width: 200px;
+}
+.tbl__bar {
+    width: 84px;
+}
+.tbl__spark {
+    width: 104px;
+}
+.tbl__isk {
+    width: 108px;
+}
+
+.row.is-out td {
+    opacity: 0.42;
+}
+
+/* 체크박스 — 라운드 없음, 앰버 채움 */
+.pick {
+    display: block;
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    border: 1px solid var(--dim);
+    border-radius: 0;
+    background: transparent;
+    appearance: none;
+    cursor: pointer;
+}
+.pick:checked {
+    border-color: var(--amber);
+    background: var(--amber);
+    box-shadow: inset 0 0 0 2px var(--hull);
+}
+
+.icon {
+    display: block;
+    width: 32px;
+    height: 32px;
+    border: 1px solid var(--edge);
+    background: var(--void);
+    object-fit: cover;
+}
+
+.name {
+    display: block;
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--frost);
+}
+
+.group {
+    display: block;
+    margin-top: 2px;
+    color: var(--dim);
+    font: 11px/1.3 var(--mono);
+}
+
+/* 보유 / 목표 — 두 값과 헤더가 같은 폭 위에 서도록 칸을 고정한다.
+   입력에 좌우 보더가 있으면 그만큼 숫자가 밀려서 헤더와 어긋난다. 그래서 밑줄만 쓴다. */
+/* 플렉스 컨테이너에서는 공백만 있는 텍스트 노드가 아이템이 되지 않는다. */
+.qty__h {
+    display: inline-flex;
+}
+.qty__a,
+.qty__b {
+    display: inline-block;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+.qty__a {
+    width: 58px;
+}
+.qty__b {
+    width: 62px;
+}
+.qty__slash {
+    display: inline-block;
+    width: 12px;
+    text-align: center;
+    color: var(--dim);
+}
+
+/* 목표 수량 — 인라인 편집 지점 */
+.target {
+    width: 62px;
+    padding: 4px 0;
+    border: 0;
+    border-bottom: 1px solid transparent;
+    border-radius: 0;
+    background: transparent;
+    color: var(--frost);
+    font: 13px/1.2 var(--mono);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    appearance: textfield;
+}
+.target::-webkit-outer-spin-button,
+.target::-webkit-inner-spin-button {
+    appearance: none;
+    margin: 0;
+}
+.target:hover {
+    border-bottom-color: var(--edge);
+}
+.target:focus {
+    border-bottom-color: var(--amber);
+}
+
+/* 충족률 바 — 채움 색이 재고 수준을 따라 레드→앰버→그린으로 옮겨간다.
+   색은 JS가 --fill 로 넣는다(연속 보간). 여기서는 길이 방향 음영만 얹는다.
+   퍼센트는 트랙 안에 얹어 열 폭을 줄였다. */
+.bar__track {
+    position: relative;
+    height: 17px;
+    background: var(--void);
+    border: 1px solid var(--edge);
+    overflow: hidden;
+}
+
+.bar__fill {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    background: linear-gradient(90deg, color-mix(in srgb, var(--fill) 62%, #000), var(--fill));
+    transform-origin: left;
+}
+
+/* 100%를 넘긴 재고는 트랙 끝에 눈금으로 표시한다 — 바는 100%에서 멈춘다. */
+.bar__over {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    width: 2px;
+    background: var(--high);
+}
+
+/* 채움 위에도, 빈 트랙 위에도 얹히므로 그림자로 바닥을 깔아 준다. */
+.bar__pct {
+    position: relative;
+    display: block;
+    padding-right: 5px;
+    text-align: right;
+    color: var(--frost);
+    /* 트랙이 border-box 17px에 1px 보더라 안쪽은 15px다. 줄높이를 맞춰야 위아래로 새지 않는다. */
+    font: 10px/15px var(--mono);
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 0 3px rgba(0, 0, 0, 0.75);
+}
+
+/* 추이 스파크라인 — 10분 간격 재고 로그 */
+.spark {
+    display: block;
+    width: 96px;
+    height: 22px;
+    overflow: visible;
+}
+
+.spark__area {
+    fill: var(--fill);
+    opacity: 0.14;
+}
+
+.spark__line {
+    fill: none;
+    stroke: var(--fill);
+    stroke-width: 1.25;
+    stroke-linejoin: round;
+}
+
+.spark__now {
+    fill: var(--fill);
+}
+
+.spark__guide {
+    stroke: var(--frost);
+    stroke-width: 1;
+    opacity: 0.45;
+}
+
+.spark__hit {
+    fill: var(--frost);
+}
+
+.spark {
+    cursor: crosshair;
+}
+
+/* 추이 툴팁 — 커서를 따라다니며 그 시점의 날짜와 수량을 읽어 준다. */
+.tip {
+    position: fixed;
+    z-index: 40;
+    padding: 6px 9px;
+    border: 1px solid var(--edge);
+    background: var(--hull);
+    color: var(--frost);
+    font: 11px/1.6 var(--mono);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    pointer-events: none;
+}
+.tip__when {
+    color: var(--dim);
+}
+.tip__qty {
+    color: var(--fill, var(--frost));
+}
+
+.short {
+    color: var(--amber);
+    font-weight: 600;
+}
+.ok {
+    color: var(--dim);
+}
+
+.isk {
+    display: block;
+    font-variant-numeric: tabular-nums;
+}
+.isk__unit {
+    display: block;
+    margin-top: 2px;
+    color: var(--dim);
+    font: 11px/1.3 var(--mono);
+}
+
+.empty {
+    margin: 0;
+    padding: 44px 20px;
+    text-align: center;
+    color: var(--dim);
+    font: 13px/1.6 var(--mono);
+}
+
+/* ── 매니페스트 (서명 요소) ────────────────────────────── */
+
+.manifest {
+    position: sticky;
+    top: 20px;
+    border: 1px solid var(--edge);
+    background: var(--hull);
+}
+
+.manifest__head {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--edge);
+}
+
+.manifest__title {
+    margin: 0;
+    font-family: var(--cond);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+}
+
+.manifest__hint {
+    margin: 5px 0 0;
+    color: var(--dim);
+    font: 12px/1.45 var(--sans);
+}
+
+/* 복사되는 텍스트는 "이름<TAB>수량" 그대로다. 여기서는 그 두 칸을 시각적으로만 정렬한다 —
+   긴 품목명 때문에 가로 스크롤이 생기지 않게. */
+.manifest__slab {
+    margin: 0;
+    padding: 12px 16px;
+    max-height: 46vh;
+    overflow-y: auto;
+    background: var(--void);
+    color: var(--frost);
+    font: 12.5px/1.6 var(--mono);
+    font-variant-numeric: tabular-nums;
+}
+.manifest__slab:empty::before {
+    content: "포함할 품목을 선택하세요.";
+    color: var(--dim);
+}
+
+.slab__row {
+    display: flex;
+    gap: 12px;
+    align-items: baseline;
+    justify-content: space-between;
+    padding: 2px 0;
+}
+
+.slab__name {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.slab__qty {
+    flex: none;
+    color: var(--amber);
+}
+
+.manifest__foot {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-top: 1px solid var(--edge);
+}
+
+.manifest__meta {
+    margin: 0;
+    color: var(--dim);
+    font: 12px/1 var(--mono);
+    font-variant-numeric: tabular-nums;
+}
+.manifest__sep {
+    padding: 0 4px;
+}
+.manifest__isk {
+    color: var(--frost);
+}
+
+.btn {
+    padding: 9px 16px;
+    border: 1px solid var(--amber);
+    border-radius: 0;
+    background: transparent;
+    color: var(--amber);
+    font: 600 12px/1.2 var(--mono);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background 120ms linear, color 120ms linear;
+}
+.btn:hover {
+    background: var(--amber);
+    color: var(--void);
+}
+.btn[disabled] {
+    border-color: var(--edge);
+    color: var(--dim);
+    cursor: not-allowed;
+    background: transparent;
+}
+
+/* ── 토스트 ────────────────────────────────────────────── */
+
+.toast {
+    position: fixed;
+    left: 50%;
+    bottom: 26px;
+    transform: translateX(-50%);
+    margin: 0;
+    padding: 10px 18px;
+    border: 1px solid var(--teal);
+    background: var(--hull);
+    color: var(--frost);
+    font: 12px/1.2 var(--mono);
+    letter-spacing: 0.06em;
+    z-index: 30;
+}
+.toast[data-tone="warn"] {
+    border-color: var(--amber);
+}
+
+/* ── 로드 시퀀스: 바가 한 번 차오른다 ──────────────────── */
+
+.bar__fill.is-new {
+    animation: fill 420ms cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
+    animation-delay: var(--d, 0ms);
+}
+
+@keyframes fill {
+    from {
+        transform: scaleX(0);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 1ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 1ms !important;
+    }
+}
+
+/* ── 반응형 ────────────────────────────────────────────── */
+
+/* 표에 열이 늘어난 뒤로는 사이드 매니페스트와 나란히 두면 이름 열이 뭉개진다.
+   한 열로 접는 분기점을 그만큼 올렸다. */
+@media (max-width: 1240px) {
+    .grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    /* 한 열로 접히면 매니페스트가 먼저 온다 — 여기서 할 일은 목록을 복사하는 것이다.
+       폭까지 따라 늘리면 품목명과 수량이 화면 양끝으로 벌어져 짝이 안 읽힌다. */
+    .manifest {
+        position: static;
+        order: -1;
+        max-width: 620px;
+    }
+    .manifest__slab {
+        max-height: 300px;
+    }
+}
+
+@media (max-width: 640px) {
+    :root {
+        --gut: 14px;
+    }
+    .rail__controls {
+        width: 100%;
+    }
+    .stock__tools {
+        justify-content: flex-start;
+    }
+    /* 375px에 여섯 열은 들어가지 않는다. 억지로 욱여넣으면 부족분이 잘려 나가는데,
+       그게 이 화면에서 가장 나쁜 실패다. 그래서 표를 접어 카드로 쌓는다.
+       아이콘과 추이만 버리고 나머지 숫자는 전부 남긴다. */
+    .tbl,
+    .tbl tbody,
+    .tbl tr,
+    .tbl td {
+        display: block;
+    }
+    .tbl thead {
+        display: none;
+    }
+    /* `.tbl td`(0,1,1)가 클래스 하나짜리 셀렉터를 이기므로, 여기서는 td를 붙여 올려 잡는다. */
+    .tbl td.tbl__ico,
+    .tbl td.tbl__spark {
+        display: none;
+    }
+
+    .tbl tr.row {
+        display: grid;
+        grid-template-columns: 20px minmax(0, 1fr) auto;
+        grid-template-areas:
+            "pick name  short"
+            "pick qty   isk"
+            "pick bar   bar";
+        gap: 4px 10px;
+        padding: 11px 12px;
+        border-bottom: 1px solid var(--plate);
+    }
+    .tbl tbody tr:last-child {
+        border-bottom: 0;
+    }
+    .tbl td,
+    .tbl tbody tr:last-child td {
+        padding: 0;
+        border: 0;
+    }
+    .tbl tbody tr:hover td {
+        background: transparent;
+    }
+    .tbl tr.row:hover {
+        background: var(--plate);
+    }
+
+    .tbl td.tbl__pick {
+        grid-area: pick;
+        align-self: start;
+        padding-top: 3px;
+    }
+    .tbl td.tbl__item {
+        grid-area: name;
+        min-width: 0;
+    }
+    .tbl td.tbl__short {
+        grid-area: short;
+        align-self: start;
+    }
+    .tbl td.tbl__qty {
+        grid-area: qty;
+        text-align: left;
+    }
+    .tbl td.tbl__isk {
+        grid-area: isk;
+        width: auto;
+        text-align: right;
+    }
+    .tbl td.tbl__bar {
+        grid-area: bar;
+        width: auto;
+    }
+    /* 카드 폭에서는 단가가 줄바꿈되어 행만 키운다. 줄 합계만 남긴다. */
+    .isk__unit {
+        display: none;
+    }
+    .tbl {
+        font-size: 12px;
+    }
+    .tbl th,
+    .tbl td {
+        padding: 8px 7px;
+    }
+    .tbl th {
+        font-size: 10px;
+        letter-spacing: 0.06em;
+    }
+    .name {
+        font-size: 12px;
+    }
+    .target {
+        width: 52px;
+        padding: 4px 5px;
+        font-size: 12px;
+    }
+    .stat {
+        padding: 0 14px;
+    }
+}

@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="ko">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Bonsai Supply — 행어 재고</title>
+        <meta name="color-scheme" content="dark" />
+        <link rel="stylesheet" href="assets/css/app.css" />
+    </head>
+    <body>
+        <a class="skip" href="#stock">재고 목록으로 건너뛰기</a>
+
+        <header class="rail">
+            <div class="rail__brand">
+                <span class="rail__mark" aria-hidden="true"></span>
+                <span class="rail__name">Bonsai Supply</span>
+                <span class="rail__tenant" data-tenant>CAT</span>
+            </div>
+
+            <div class="rail__controls">
+                <label class="field">
+                    <span class="field__label">행어</span>
+                    <select class="field__input" id="hangar">
+                        <option>Jita IV-4 — Corp Hangar 1</option>
+                        <option>Amarr VIII — Corp Hangar 2</option>
+                        <option>1DQ1-A — Keepstar Deliveries</option>
+                    </select>
+                </label>
+                <p class="rail__sync">
+                    <span class="rail__pulse" aria-hidden="true"></span>
+                    <span data-sync>4분 전 동기화</span>
+                </p>
+            </div>
+        </header>
+
+        <main class="page">
+            <div class="grid">
+                <section class="stock" id="stock" aria-labelledby="stock-title">
+                    <div class="stock__head">
+                        <h2 class="stock__title" id="stock-title">재고</h2>
+                        <div class="stock__tools">
+                            <div class="segbtn" role="group" aria-label="목록 필터">
+                                <button class="segbtn__b is-on" data-filter="short" type="button">
+                                    부족
+                                </button>
+                                <button class="segbtn__b" data-filter="all" type="button">
+                                    전체
+                                </button>
+                                <button class="segbtn__b" data-filter="ok" type="button">충족</button>
+                            </div>
+                            <label class="field field--grow">
+                                <span class="field__label vh">품목 검색</span>
+                                <input
+                                    class="field__input"
+                                    type="search"
+                                    id="q"
+                                    placeholder="품목 검색"
+                                    autocomplete="off"
+                                />
+                            </label>
+                        </div>
+                    </div>
+
+                    <p class="note">
+                        가격 출처 <span data-price-source>—</span>
+                        <span class="note__sep" aria-hidden="true">·</span>
+                        추이는 <span data-history-window>24</span>시간, <span
+                            data-sample-minutes
+                            >10</span
+                        >분 간격
+                    </p>
+
+                    <div class="tablewrap">
+                        <table class="tbl">
+                            <caption class="vh">
+                                행어 재고, 목표 수량, 부족분, 예상 비용
+                            </caption>
+                            <thead>
+                                <tr>
+                                    <th class="tbl__pick" scope="col">
+                                        <span class="vh">매니페스트 포함</span>
+                                    </th>
+                                    <th class="tbl__item" scope="col" colspan="2">품목</th>
+                                    <th class="tbl__spark" scope="col">추이</th>
+                                    <th class="tbl__bar" scope="col">충족률</th>
+                                    <th class="tbl__n tbl__qty" scope="col">
+                                        <!-- inline-flex 래퍼: 스팬 사이 개행이 공백으로 렌더돼
+                                             아래 값과 기준선이 어긋나는 것을 막는다. -->
+                                        <span class="qty__h">
+                                            <span class="qty__a">보유</span>
+                                            <span class="qty__slash">/</span>
+                                            <span class="qty__b">목표</span>
+                                        </span>
+                                    </th>
+                                    <th class="tbl__n" scope="col">부족</th>
+                                    <th class="tbl__n tbl__isk" scope="col">예상 비용</th>
+                                </tr>
+                            </thead>
+                            <tbody data-rows></tbody>
+                        </table>
+                        <p class="empty" data-empty hidden></p>
+                    </div>
+                </section>
+
+                <aside class="manifest" aria-labelledby="manifest-title">
+                    <div class="manifest__head">
+                        <h2 class="manifest__title" id="manifest-title">멀티바이 매니페스트</h2>
+                        <p class="manifest__hint">게임 내 Multibuy 창에 그대로 붙여넣으세요.</p>
+                    </div>
+
+                    <div class="manifest__slab" data-slab tabindex="0" aria-live="polite"></div>
+
+                    <div class="manifest__foot">
+                        <p class="manifest__meta">
+                            <span data-manifest-lines>0</span> 줄
+                            <span class="manifest__sep" aria-hidden="true">·</span>
+                            <span data-manifest-volume>0</span> m³
+                            <span class="manifest__sep" aria-hidden="true">·</span>
+                            <span class="manifest__isk" data-manifest-isk>—</span>
+                        </p>
+                        <button class="btn" type="button" data-copy>매니페스트 복사</button>
+                    </div>
+                </aside>
+            </div>
+        </main>
+
+        <div class="tip" data-tip hidden aria-hidden="true"></div>
+        <p class="toast" data-toast role="status" aria-live="polite" hidden></p>
+
+        <script src="assets/js/data.mock.js"></script>
+        <script src="assets/js/pricing.js"></script>
+        <script src="assets/js/app.js"></script>
+    </body>
+</html>
