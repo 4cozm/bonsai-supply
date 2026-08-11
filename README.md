@@ -76,8 +76,18 @@ API가 이 배열로 내려주면 된다.
 **데이터.** [app.js](assets/js/app.js)의 `loadItems()` 하나가 `window.BONSAI_MOCK`을 읽는
 유일한 지점이다. API가 생기면 이 함수만 `fetch("/api/stock")`으로 바꾼다.
 
-**부피.** 목업의 `unitVolume`은 아직 임의값이다. 실제 값은 ESI `universe/types/{id}`의
-`volume`에서 온다. `typeId`와 `name`은 `universe/ids/`로 검증한 실제 값이다.
+**부피는 `packaged_volume`을 써야 한다.** ESI `universe/types/{id}`는 `volume`과
+`packaged_volume`을 둘 다 준다. 모듈·탄약은 값이 같지만 **선박은 10배 가까이 벌어진다** —
+Muninn 96,000 대 10,000, Guardian 115,000 대 10,000. 행어에 쌓아 두는 것도 사서 실어 나르는
+것도 포장 상태이므로 이 화면이 쓸 값은 `packaged_volume`이다. `volume`을 쓰면 운반 부피가
+열 배로 부풀어 하울러 계획이 어긋난다.
+
+목업의 `typeId` / `name` / `unitVolume`은 전부 ESI로 확인한 실제 값이다.
+
+**조회 경로 이중화.** `universe/types/{id}`가 한동안 504를 뱉은 적이 있다(일시 장애로 확인,
+현재는 정상). 대안으로 [EVE Ref](https://ref-data.everef.net/types/2456)가 name·volume·group_id를
+한 번에 주고 CORS도 열려 있다 — 다만 CCP 공식이 아닌 커뮤니티 서비스라 SLA가 없다.
+어느 쪽을 1차로 두든 나머지를 폴백으로 두는 편이 안전하다.
 
 **이름은 정확해야 한다.** 멀티바이가 이름 문자열로 품목을 찾기 때문에, 철자가 어긋나면 그 줄은
 조용히 매칭에 실패한다. 실제로 목업을 검증하다 `Scourge Fury Heavy Assault Missile`이 게임에
