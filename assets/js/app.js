@@ -38,6 +38,7 @@
         priceSource: "조회 중…",
         priceOk: true,
         priceApprox: false, // true 면 Fuzzwork 실시간 매도가가 아니라 ESI 평균값 폴백
+        hub: null, // 4대 상권 station id. setupHub() 가 저장값/기본값(지타)으로 채운다.
         baseTarget: {}, // 저장 전 원래 목표 수량. 키가 있으면 곧 "변경됨"이다.
         sort: { key: "days", asc: true },
         sampledAt: Date.now(),
@@ -55,6 +56,7 @@
         toast: document.querySelector("[data-toast]"),
         query: document.getElementById("q"),
         hangar: document.getElementById("hangar"),
+        hub: document.querySelector("[data-hub]"),
         sync: document.querySelector("[data-sync]"),
         priceSource: document.querySelector("[data-price-source]"),
         priceNote: document.querySelector(".note"),
@@ -279,9 +281,45 @@
         });
     }
 
+    var HUB_STORAGE_KEY = "bonsai:hub";
+
+    /**
+     * 상권 셀렉트를 pricing.js 의 HUBS 로 채우고, 저장해 둔 선택(있다면)을 복원한다.
+     * 목록의 유일한 출처를 pricing.js 로 못박아 뒀다 — 여기서 다시 나열하면 나중에
+     * 이름이나 순서가 어긋난다.
+     */
+    function setupHub() {
+        if (!el.hub || !window.BonsaiPricing) return;
+
+        var hubs = window.BonsaiPricing.HUBS || [];
+        el.hub.textContent = "";
+        hubs.forEach(function (hub) {
+            var opt = document.createElement("option");
+            opt.value = String(hub.id);
+            opt.textContent = hub.name;
+            el.hub.appendChild(opt);
+        });
+
+        var saved = parseInt(localStorage.getItem(HUB_STORAGE_KEY), 10);
+        var valid = hubs.some(function (h) {
+            return h.id === saved;
+        });
+        state.hub = valid ? saved : window.BonsaiPricing.DEFAULT_HUB_ID;
+        el.hub.value = String(state.hub);
+
+        el.hub.addEventListener("change", function () {
+            state.hub = parseInt(el.hub.value, 10);
+            localStorage.setItem(HUB_STORAGE_KEY, String(state.hub));
+            state.priceSource = "조회 중…";
+            state.priceOk = true;
+            render();
+            loadPrices();
+        });
+    }
+
     function loadPrices() {
         if (!window.BonsaiPricing) return;
-        window.BonsaiPricing.fetchPrices(state.items).then(function (result) {
+        window.BonsaiPricing.fetchPrices(state.items, state.hub).then(function (result) {
             // 실패하면 이전에 받아 둔 값(있다면)을 지우지 않는다 — 나중에 주기적 재조회를
             // 붙였을 때, 일시적 실패로 화면의 모든 비용이 "—"로 사라지는 것보다 낫다.
             // 첫 로드 실패라면 어차피 아직 아무 값도 없었으니 차이가 없다.
@@ -1906,6 +1944,7 @@
     /* ── 시작 ───────────────────────────────────────────── */
 
     state.items = loadItems();
+    setupHub();
     renderSortDir();
     render();
     loadPrices();

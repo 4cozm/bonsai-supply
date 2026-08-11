@@ -232,13 +232,32 @@ SDE(JSONL 기준 98MB)는 이름·부피·그룹을 대량으로 캐싱하고 �
 
 ## 시세
 
-[pricing.js](assets/js/pricing.js)가 **Fuzzwork market aggregates**로 실제 지타 매도가를
+[pricing.js](assets/js/pricing.js)가 **Fuzzwork market aggregates**로 실제 매도가를
 브라우저에서 직접 받는다. 백엔드 프록시 없이 정적 사이트에서 바로 붙는다 — 실측으로 확인했다:
 
 ```
 GET https://market.fuzzwork.co.uk/aggregates/?station=60003760&types=2456,2488,...
 Access-Control-Allow-Origin: *      ← 있음, 키 불필요
 ```
+
+**4대 상권을 고를 수 있다.** 상단 레일의 "상권" 셀렉트 — 기본은 지타, 아마르·도딕시·렌즈로
+바꿀 수 있다. 목록·id 의 유일한 출처는 [pricing.js](assets/js/pricing.js)의 `HUBS`다(다른
+곳에 또 나열하면 나중에 어긋난다). 넷 다 station id 를 ESI `/universe/stations/{id}/`로,
+실제로 다른 값이 나오는 것도 Fuzzwork 로 실측 확인했다:
+
+| 상권 | station id | Hobgoblin II 매도가(실측) |
+| --- | --- | --- |
+| 지타 | 60003760 | 325,818 |
+| 아마르 | 60008494 | 326,743 |
+| 도딕시 | 60011866 | 349,697 |
+| 렌즈 | 60004588 | 341,500 |
+
+선택은 `localStorage`에 저장돼 새로고침해도 유지된다. 바꾸면 그 상권으로 즉시 재조회한다.
+
+**ESI 근사값 폴백은 상권을 안 가린다.** `/markets/prices/`는 지역 시장 개념이 없는
+게임 전체 평균이라, 지타를 고르든 렌즈를 고르든 폴백 시 같은 숫자가 나온다 — source
+문자열에 "상권 무관"이라고 명시해 뒀다. 안 적으면 사용자가 "렌즈 기준"이라고 착각한
+채 그 값을 볼 수 있다.
 
 typeId 를 콤마로 이어 한 번에 배치 조회된다(15개 응답 1.2초, 6KB). `station=60003760`은
 Jita IV-4 CNAP — 이 앱이 다루는 물류 기준점과 일치한다. 값은 `sell.percentile`을 쓴다 —

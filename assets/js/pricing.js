@@ -39,14 +39,36 @@
     "use strict";
 
     var FUZZWORK_URL = "https://market.fuzzwork.co.uk/aggregates/";
-    var JITA_4_4_STATION = 60003760;
     var ESI_PRICES_URL = "https://esi.evetech.net/latest/markets/prices/?datasource=tranquility";
+
+    // 4대 상권. station id 는 ESI /universe/stations/{id}/ 로 실측 검증했고, Fuzzwork
+    // aggregates 가 넷 다 실제로 다른 값을 주는 것도 확인했다(Hobgoblin II 매도가:
+    // 지타 325,818 / 아마르 326,742 / 도딕시 349,697 / 렌즈 341,500). id 의 유일한
+    // 출처는 여기다 — index.html 의 <select> 는 이 목록을 그대로 그려 넣는다.
+    var HUBS = [
+        { id: 60003760, name: "지타" },
+        { id: 60008494, name: "아마르" },
+        { id: 60011866, name: "도딕시" },
+        { id: 60004588, name: "렌즈" },
+    ];
+    var DEFAULT_HUB = HUBS[0];
+
+    function hubById(id) {
+        for (var i = 0; i < HUBS.length; i++) {
+            if (HUBS[i].id === id) return HUBS[i];
+        }
+        return DEFAULT_HUB;
+    }
 
     /**
      * ESI 전체 가격 목록 폴백. 응답이 15,890개 전 품목을 한 번에 담고 있어 typeId 별로
-     * 나눠 부를 필요가 없다 — station 파라미터도 없다(지역 시장 개념이 아니라 게임 전체
+     * 나눠 부를 필요가 없다 — station 파라미터가 없다(지역 시장 개념이 아니라 게임 전체
      * 기준 참고값이라서). average_price 를 쓴다: adjusted_price 는 보험금 산정용이라
      * "얼마면 살 수 있나"라는 이 화면의 질문과 더 멀다.
+     *
+     * hub 를 무시한다 — 애초에 상권별 값이 없는 폴백이라 지타를 고르든 렌즈를 고르든
+     * 같은 숫자가 나온다. source 문자열에 그 사실을 적어 둔다 — 안 적으면 사용자가
+     * "렌즈 기준"이라고 착각한 채 이 값을 볼 수 있다.
      */
     function esiFallbackProvider(items) {
         var priced = items.filter(function (i) {
@@ -85,7 +107,9 @@
                 });
 
                 return {
-                    source: "ESI 평균가(참고용, 실시간 아님)" + (missing ? " · " + missing + "개 가격 없음" : ""),
+                    source:
+                        "ESI 평균가(참고용, 실시간·상권 무관)" +
+                        (missing ? " · " + missing + "개 가격 없음" : ""),
                     ok: true,
                     approx: true,
                     pricedAt: new Date(),
@@ -94,7 +118,8 @@
             });
     }
 
-    function fuzzworkProvider(items) {
+    function fuzzworkProvider(items, hubId) {
+        var hub = hubById(hubId);
         var priced = items.filter(function (i) {
             return i.typeId > 0;
         });
@@ -117,7 +142,7 @@
             (namesByType[item.typeId] = namesByType[item.typeId] || []).push(item.name);
         });
         var typeIds = Object.keys(namesByType);
-        var url = FUZZWORK_URL + "?station=" + JITA_4_4_STATION + "&types=" + typeIds.join(",");
+        var url = FUZZWORK_URL + "?station=" + hub.id + "&types=" + typeIds.join(",");
 
         return fetch(url)
             .then(function (r) {
@@ -141,7 +166,7 @@
 
                 var missing = unpricedCount + noQuote;
                 return {
-                    source: "Fuzzwork(지타 매도)" + (missing ? " · " + missing + "개 가격 없음" : ""),
+                    source: "Fuzzwork(" + hub.name + " 매도)" + (missing ? " · " + missing + "개 가격 없음" : ""),
                     ok: true,
                     approx: false,
                     pricedAt: new Date(),
@@ -151,18 +176,24 @@
     }
 
     window.BonsaiPricing = {
+        /** 상단 상권 셀렉트를 채우는 유일한 출처. 이름·ID를 다른 곳에 또 적지 않는다. */
+        HUBS: HUBS,
+        DEFAULT_HUB_ID: DEFAULT_HUB.id,
+
         /**
          * @param {Array<{name: string, typeId: number, unitVolume: number}>} items
+         * @param {number} [hubId] 4대 상권 station id. 생략하면 지타.
          * @returns {Promise<{source: string, ok: boolean, approx: boolean, pricedAt: Date|null, unitPrices: Record<string, number>}>}
          *          unitPrices 는 품목명 → 개당 ISK. 값을 모르는 품목은 키가 아예 없다
          *          (0 이 아니다) — 화면은 이를 "—" 로 보여 준다.
          *          approx 가 true 면 실시간 매도가가 아니라 ESI 평균값 폴백이 쓰였다는
-         *          뜻이다 — app.js 가 이걸로 단가 표시에 물결표를 붙인다.
+         *          뜻이다(이 폴백은 상권을 구분하지 않는다) — app.js 가 이걸로 단가
+         *          표시에 물결표를 붙인다.
          *          ok 가 false 면 Fuzzwork·ESI 폴백 둘 다 실패한 것이고 unitPrices 는
          *          비어 있다. 그 경우 이전에 받아 둔 값을 지울지는 호출부(app.js)가 정한다.
          */
-        fetchPrices: function (items) {
-            return fuzzworkProvider(items).catch(function () {
+        fetchPrices: function (items, hubId) {
+            return fuzzworkProvider(items, hubId).catch(function () {
                 return esiFallbackProvider(items).catch(function (err) {
                     return {
                         source: "가격 조회 실패" + (err && err.message ? " (" + err.message + ")" : ""),

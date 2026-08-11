@@ -47,6 +47,12 @@
                         <option>1DQ1-A — Keepstar Deliveries</option>
                     </select>
                 </label>
+                <label class="field">
+                    <span class="field__label">상권</span>
+                    <!-- 목록은 data-hub-options 로 JS 가 채운다(pricing.js 의 HUBS 가 유일한
+                         출처 — 이름·ID를 여기 또 적으면 나중에 둘이 어긋난다). -->
+                    <select class="field__input" data-hub></select>
+                </label>
                 <p class="rail__sync">
                     <span class="rail__pulse" aria-hidden="true"></span>
                     <span data-sync>4분 전 동기화</span>
