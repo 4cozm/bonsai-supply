@@ -22,7 +22,7 @@
     --cond: "Oswald", "Pretendard", "Roboto Condensed", "Arial Narrow", "Helvetica Neue Condensed", sans-serif;
     --sans: "IBM Plex Sans", "Pretendard", ui-sans-serif, "Segoe UI", system-ui, sans-serif;
 
-    --gut: 20px;
+    --gut: 16px;
 }
 
 * {
@@ -210,10 +210,11 @@ select.field__input {
 .grid {
     display: grid;
     /* 매니페스트가 표(아이콘·수량·부피·비용)로 바뀌면서 340px 로는 옆으로 슬라이드해야만
-       다 보였다. 460px 로 넓혀 웬만한 품목명은 그대로 들어가게 했다 — 그래도 못 들어가는
-       긴 이름은 .mname 의 ellipsis 가 안전망으로 잘라낸다. */
-    grid-template-columns: minmax(0, 1fr) 460px;
-    gap: 28px;
+       다 보였다. 420px 로 넓혀 웬만한 품목명은 그대로 들어가게 했다 — 그래도 못 들어가는
+       긴 이름은 .mname 의 ellipsis 가 안전망으로 잘라낸다. 재고 표에 운반부피/ISK per m³
+       열이 추가된 뒤로는 이 폭도 표 쪽에 최대한 양보해야 해서 460px 에서 한 번 줄였다. */
+    grid-template-columns: minmax(0, 1fr) 420px;
+    gap: 20px;
     align-items: start;
     margin-top: 4px;
 }
@@ -334,7 +335,7 @@ select.field__input {
     align-items: center;
     gap: 4px;
     width: 100%;
-    padding: 9px 12px;
+    padding: 8px 9px;
     cursor: pointer;
     color: inherit;
     font: inherit;
@@ -365,7 +366,7 @@ select.field__input {
 }
 
 .tbl td {
-    padding: 9px 12px;
+    padding: 8px 9px;
     border-bottom: 1px solid var(--plate);
     vertical-align: middle;
 }
@@ -390,16 +391,22 @@ select.field__input {
 }
 /* 고정폭 열이 많아서, 이름이 먼저 쥐어짜인다. 바닥을 깔아 3줄로 쪼개지지 않게 한다. */
 .tbl__item {
-    min-width: 200px;
+    min-width: 176px;
 }
 .tbl__bar {
-    width: 84px;
+    width: 72px;
 }
 .tbl__spark {
-    width: 104px;
+    width: 92px;
 }
 .tbl__isk {
-    width: 108px;
+    width: 96px;
+}
+.tbl__vol {
+    width: 80px;
+}
+.tbl__density {
+    width: 92px;
 }
 
 /* 체크박스 — 라운드 없음, 앰버 채움 */
