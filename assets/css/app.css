@@ -31,6 +31,11 @@
 
 html {
     background: var(--void);
+    /* 품목이 있을 때(긴 표)와 없을 때("표시할 품목이 없습니다" 한 줄)는 페이지 높이가
+       크게 달라 세로 스크롤바가 생겼다 사라졌다 한다 — 그때마다 뷰포트 가용 폭이
+       스크롤바 두께만큼 바뀌어 전체 레이아웃이 좌우로 움찔거렸다. 자리를 항상
+       예약해 두면 스크롤바 유무와 무관하게 폭이 고정된다. */
+    scrollbar-gutter: stable;
 }
 
 body {
@@ -1409,6 +1414,12 @@ select.field__input {
 }
 .toast[data-tone="warn"] {
     border-color: var(--amber);
+}
+/* 작성자 스타일이 항상 UA 스타일(`[hidden]{display:none}`)을 이긴다 — 위 display:
+   inline-flex 를 그대로 두면 hidden 속성이 무시되어 "조회 성공"이 2.6초 뒤에도 안
+   사라지고 계속 떠 있는다(.pending[hidden]과 같은 이유, 같은 자리에서 또 걸렸다). */
+.toast[hidden] {
+    display: none;
 }
 
 /* 오래 걸리는 조회 중에는 토스트가 자동으로 안 사라지고 계속 떠 있는다(app.js
