@@ -62,6 +62,56 @@
     }
 
     /**
+     * ESI엔 typeId 배치 조회가 없다(위 설명) — 그렇다고 typeId 하나당 fetch()를
+     * 전부 동시에 쏘면(예전 코드가 그랬다) 재고 typeId 종류가 몇백 개로 늘어난
+     * 지금은 순간적으로 수백 개 요청이 한 번에 나간다. ESI 쪽 요청 제한(초당 처리량
+     * 넘으면 420/429)에 걸리거나, 그 요청들이 자잘하게 실패하기 시작하면 "이름 미확인"
+     * 품목이 무더기로 뜬다 — pricing.js 의 Fuzzwork 청크 분할과 같은 이유로, 여기도
+     * 동시 실행 개수를 제한한다.
+     *
+     * @param {Array} items
+     * @param {number} limit 동시 진행 개수
+     * @param {Function} worker item -> Promise (실패해도 reject 하지 않아야 한다 —
+     *        여기서는 항상 resolve 하는 걸 호출부가 보장한다)
+     * @returns {Promise<void>}
+     */
+    function runLimited(items, limit, worker) {
+        return new Promise(function (resolve) {
+            if (!items.length) {
+                resolve();
+                return;
+            }
+            var next = 0;
+            var remaining = items.length;
+
+            function pump() {
+                while (next < items.length && limit > 0) {
+                    var item = items[next++];
+                    limit--; // 이 슬롯을 점유했다가, 끝나면 아래서 돌려준다
+                    worker(item).then(function () {
+                        limit++;
+                        remaining--;
+                        if (remaining === 0) resolve();
+                        else pump();
+                    });
+                }
+            }
+            pump();
+        });
+    }
+
+    /** ESI가 일시적으로 흔들릴 때(420/429/5xx) 한 번은 잠깐 쉬었다 다시 시도한다. */
+    function withRetry(fn) {
+        return fn().catch(function (err) {
+            return new Promise(function (resolve) {
+                setTimeout(resolve, 400 + Math.random() * 400);
+            }).then(fn);
+        });
+    }
+
+    var TYPE_CONCURRENCY = 12;
+
+    /**
      * @param {number[]} typeIds
      * @returns {Promise<Object<number, {name:string, group:string, unitVolume:number}>>}
      *          실패한 typeId는 결과 맵에서 빠진다(가짜 이름을 채우지 않는다 —
@@ -85,8 +135,10 @@
             else toFetchTypes.push(id);
         });
 
-        var typeJobs = toFetchTypes.map(function (id) {
-            return fetchType(id).then(
+        var typesDone = runLimited(toFetchTypes, TYPE_CONCURRENCY, function (id) {
+            return withRetry(function () {
+                return fetchType(id);
+            }).then(
                 function (info) {
                     writeCache(CACHE_PREFIX + id, info);
                     typeResult[id] = info;
@@ -97,7 +149,7 @@
             );
         });
 
-        return Promise.all(typeJobs).then(function () {
+        return typesDone.then(function () {
             var groupIds = [];
             var groupSeen = Object.create(null);
             Object.keys(typeResult).forEach(function (id) {
@@ -116,8 +168,10 @@
                 else toFetchGroups.push(gid);
             });
 
-            var groupJobs = toFetchGroups.map(function (gid) {
-                return fetchGroupName(gid).then(
+            var groupsDone = runLimited(toFetchGroups, TYPE_CONCURRENCY, function (gid) {
+                return withRetry(function () {
+                    return fetchGroupName(gid);
+                }).then(
                     function (name) {
                         writeCache(GROUP_CACHE_PREFIX + gid, name);
                         groupNames[gid] = name;
@@ -128,7 +182,7 @@
                 );
             });
 
-            return Promise.all(groupJobs).then(function () {
+            return groupsDone.then(function () {
                 var out = {};
                 Object.keys(typeResult).forEach(function (id) {
                     var t = typeResult[id];

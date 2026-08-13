@@ -1311,6 +1311,10 @@ select.field__input {
     padding: var(--gut);
 }
 
+.authgate[hidden] {
+    display: none;
+}
+
 .authgate__box {
     max-width: 420px;
     padding: 32px 28px;
