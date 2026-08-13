@@ -50,6 +50,8 @@
         sampleMs: 60 * 60 * 1000,
         sparkPoints: 24, // 표의 스파크라인이 그리는 표본 수 (GET /items의 recentHistory 길이와 맞춤)
         structureId: null, // fetchStructures() 결과의 첫 번째(또는 선택한) 구조물
+        division: null, // 선택한 행어 번호(1-7). null이면 구조물 전체(필터 없음).
+        container: null, // division 안 특정 컨테이너로 더 좁혔을 때만 값이 있다.
         firstPaint: true,
     };
 
@@ -64,6 +66,7 @@
         toast: document.querySelector("[data-toast]"),
         query: document.getElementById("q"),
         hangar: document.getElementById("hangar"),
+        division: document.getElementById("division"),
         hub: document.querySelector("[data-hub]"),
         sync: document.querySelector("[data-sync]"),
         priceSource: document.querySelector("[data-price-source]"),
@@ -165,12 +168,17 @@
 
     /* ── 파생값 ─────────────────────────────────────────── */
 
+    function hasNoTarget(item) {
+        return item.target == null;
+    }
+
     function deficit(item) {
+        if (hasNoTarget(item)) return 0;
         return Math.max(0, item.target - item.stocked);
     }
 
     function isShort(item) {
-        return deficit(item) > 0;
+        return !hasNoTarget(item) && deficit(item) > 0;
     }
 
     function included(item) {
@@ -265,6 +273,54 @@
         el.hangar.value = state.structureId || structures[0].structureId;
     }
 
+    /** division/컨테이너 쌍을 <select> option value 하나로 encode/decode. */
+    function divisionOptionValue(division, containerName) {
+        return String(division) + "::" + (containerName || "");
+    }
+
+    /**
+     * 행어(division) 셀렉트를 GET /v1/stock/structures/:id/divisions 결과로 채운다.
+     * 맨 앞엔 항상 "전체"(필터 없음) 옵션을 고정으로 둔다. 구조물을 바꿀 때마다 이
+     * 목록 자체가 다르므로 선택은 항상 "전체"로 리셋한다.
+     */
+    function setupDivisionSelect(divisions) {
+        if (!el.division) return;
+        el.division.textContent = "";
+
+        var allOpt = document.createElement("option");
+        allOpt.value = "";
+        allOpt.textContent = "전체";
+        el.division.appendChild(allOpt);
+
+        divisions.forEach(function (d) {
+            var opt = document.createElement("option");
+            opt.value = divisionOptionValue(d.division, d.containerName);
+            opt.textContent = d.displayName;
+            el.division.appendChild(opt);
+        });
+
+        state.division = null;
+        state.container = null;
+        el.division.value = "";
+    }
+
+    /**
+     * 구조물을 바꿀 때 쓰는 경로: 그 구조물의 행어 목록을 새로 받아 셀렉트를
+     * 리셋하고("전체"로), 재고를 불러온다. loadStockData() 단독 호출(1시간 자동
+     * 새로고침, 행어 선택 변경)과 달리 여기서만 행어 목록 자체를 다시 받는다 —
+     * 매 새로고침마다 다시 받으면 사용자가 골라 둔 행어 선택이 계속 리셋된다.
+     */
+    function loadStructureData(structureId) {
+        return window.BonsaiApi.fetchDivisions(structureId)
+            .then(setupDivisionSelect)
+            .catch(function () {
+                // 행어 목록 조회 실패해도 전체 재고는 그대로 보여준다 — 필터 기능만 못 쓸 뿐.
+            })
+            .then(function () {
+                return loadStockData(structureId);
+            });
+    }
+
     /**
      * typeId만 있는 원본 아이템에 이름/그룹/부피를 붙인다. typeId→표시정보 해석은
      * 일부러 백엔드가 아니라 여기서 한다(파일 위 설명 참고). 해석 실패한 typeId는
@@ -302,7 +358,10 @@
      * @param {string} structureId
      */
     function loadStockData(structureId) {
-        return window.BonsaiApi.fetchStockItems(structureId)
+        return window.BonsaiApi.fetchStockItems(structureId, {
+            division: state.division,
+            container: state.container,
+        })
             .then(function (data) {
                 state.structureId = data.structure.structureId;
                 if (el.sync) el.sync.textContent = relativeSyncLabel(data.structure.syncedAt);
@@ -429,7 +488,8 @@
         var q = state.query.trim().toLowerCase();
         var kept = state.items.filter(function (item) {
             if (state.filter === "short" && !isShort(item)) return false;
-            if (state.filter === "ok" && isShort(item)) return false;
+            if (state.filter === "ok" && (hasNoTarget(item) || isShort(item))) return false;
+            if (state.filter === "notarget" && !hasNoTarget(item)) return false;
             if (!q) return true;
             return (
                 item.name.toLowerCase().indexOf(q) !== -1 ||
@@ -1044,8 +1104,8 @@
         modal.name.textContent = item.name;
         modal.group.textContent = item.group || "";
         modal.stocked.textContent = num(item.stocked);
-        modal.target.textContent = num(item.target);
-        modal.short.textContent = short ? "−" + num(short) : "충족";
+        modal.target.textContent = hasNoTarget(item) ? "미설정" : num(item.target);
+        modal.short.textContent = short ? "−" + num(short) : hasNoTarget(item) ? "목표없음" : "충족";
         modal.short.className = "stat__v " + (short ? "short" : "ok");
 
         // 차트는 모달을 연 뒤에 그린다 — 닫힌 dialog 는 폭이 0이라 viewBox 를 맞출 수 없다.
@@ -1253,7 +1313,8 @@
         input.min = "0";
         input.step = "1";
         input.className = "target";
-        input.value = String(item.target);
+        input.value = hasNoTarget(item) ? "" : String(item.target);
+        input.placeholder = "목표 설정";
         input.setAttribute("aria-label", item.name + " 목표 수량");
         if (isDirty(item)) input.classList.add("is-dirty");
         input.addEventListener("change", function () {
@@ -1268,7 +1329,7 @@
         var tdShort = document.createElement("td");
         tdShort.className = "tbl__n tbl__short " + (short ? "short" : "ok");
         var shortMain = document.createElement("span");
-        shortMain.textContent = short ? "−" + num(short) : "충족";
+        shortMain.textContent = short ? "−" + num(short) : hasNoTarget(item) ? "목표없음" : "충족";
         tdShort.appendChild(shortMain);
         var left = daysLeft(item);
         if (isFinite(left)) {
@@ -1950,8 +2011,23 @@
     if (el.hangar) {
         el.hangar.addEventListener("change", function () {
             if (el.hangar.value && el.hangar.value !== state.structureId) {
-                loadStockData(el.hangar.value);
+                loadStructureData(el.hangar.value);
             }
+        });
+    }
+
+    if (el.division) {
+        el.division.addEventListener("change", function () {
+            // 첫 "::"에서만 자른다 — 컨테이너 이름 자체에 "::"가 들어있어도(admin이
+            // /재고행어설정으로 그렇게 지었다면) division 뒤 나머지 전부가 container로
+            // 온전히 남는다.
+            var raw = el.division.value;
+            var sepIdx = raw.indexOf("::");
+            var divisionPart = sepIdx === -1 ? raw : raw.slice(0, sepIdx);
+            var containerPart = sepIdx === -1 ? "" : raw.slice(sepIdx + 2);
+            state.division = divisionPart ? Number(divisionPart) : null;
+            state.container = containerPart || null;
+            if (state.structureId) loadStockData(state.structureId);
         });
     }
 
@@ -2042,7 +2118,7 @@
                         return;
                     }
                     setupHangarSelect(structures);
-                    return loadStockData(el.hangar.value);
+                    return loadStructureData(el.hangar.value);
                 })
                 .then(function () {
                     loadPrices();

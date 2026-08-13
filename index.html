@@ -57,9 +57,15 @@
 
             <div class="rail__controls">
                 <label class="field">
-                    <span class="field__label">행어</span>
+                    <span class="field__label">구조물</span>
                     <!-- 목록은 GET /v1/stock/structures 로 app.js가 채운다. -->
                     <select class="field__input" id="hangar"></select>
+                </label>
+                <label class="field">
+                    <span class="field__label">행어</span>
+                    <!-- 목록은 GET /v1/stock/structures/:id/divisions 로 app.js가 채운다.
+                         맨 앞 "전체" 옵션만 고정. -->
+                    <select class="field__input" id="division"></select>
                 </label>
                 <label class="field">
                     <span class="field__label">상권</span>
@@ -88,6 +94,9 @@
                                     전체
                                 </button>
                                 <button class="segbtn__b" data-filter="ok" type="button">충족</button>
+                                <button class="segbtn__b" data-filter="notarget" type="button">
+                                    목표없음
+                                </button>
                             </div>
                             <label class="field field--grow">
                                 <span class="field__label vh">품목 검색</span>
