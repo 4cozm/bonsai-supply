@@ -110,7 +110,8 @@
                                 />
                             </label>
                             <!-- 정렬 기준 선택은 없다 — 표 헤더를 클릭해서 정렬한다(품목/추이/
-                                 충족률/보유·목표/부족/운반부피/ISK per m³/예상비용 전부). -->
+                                 충족률/보유·목표/부족/ISK per m³ 전부). 예상 비용·운반 부피는
+                                 매니페스트에 담은 뒤에만 의미가 있어서 표에는 안 둔다. -->
                             <button
                                 class="btn btn--ghost btn--dir"
                                 type="button"
@@ -155,7 +156,7 @@
                     <div class="tablewrap">
                         <table class="tbl">
                             <caption class="vh">
-                                행어 재고, 목표 수량, 부족분, 예상 비용, 운반 부피, ISK per m³. 각 열 제목을 눌러 정렬할 수 있습니다.
+                                행어 재고, 목표 수량, 부족분, ISK per m³. 각 열 제목을 눌러 정렬할 수 있습니다.
                             </caption>
                             <colgroup>
                                 <col class="tbl__pick" />
@@ -165,8 +166,6 @@
                                 <col class="tbl__bar" />
                                 <col class="tbl__qty" />
                                 <col class="tbl__short" />
-                                <col class="tbl__isk" />
-                                <col class="tbl__vol" />
                                 <col class="tbl__density" />
                             </colgroup>
                             <thead>
@@ -209,16 +208,6 @@
                                     <th class="tbl__n tbl__short" scope="col">
                                         <button type="button" class="th-sort" data-sort-key="short">
                                             부족<span class="th-sort__arrow" aria-hidden="true"></span>
-                                        </button>
-                                    </th>
-                                    <th class="tbl__n tbl__isk" scope="col">
-                                        <button type="button" class="th-sort" data-sort-key="cost">
-                                            예상 비용<span class="th-sort__arrow" aria-hidden="true"></span>
-                                        </button>
-                                    </th>
-                                    <th class="tbl__n tbl__vol" scope="col">
-                                        <button type="button" class="th-sort" data-sort-key="volume">
-                                            운반 부피<span class="th-sort__arrow" aria-hidden="true"></span>
                                         </button>
                                     </th>
                                     <th class="tbl__n tbl__density" scope="col">

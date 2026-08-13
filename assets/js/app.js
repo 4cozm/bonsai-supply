@@ -233,11 +233,6 @@
         return unitPrice(item) / v;
     }
 
-    /** 부족분을 전부 채우려면 필요한 운반 부피 — "운반 부피" 열/정렬 기준으로 쓴다. */
-    function deficitVolume(item) {
-        return deficit(item) * (item.unitVolume || 0);
-    }
-
     /**
      * 매니페스트에 실을 수량. 기본은 부족분 전체지만 사용자나 오마카세가 조절할 수 있다.
      * 저장된 오버라이드가 현재 부족분보다 크면(목표를 낮췄거나 재고가 늘어난 경우) 읽는
@@ -269,10 +264,6 @@
 
     function unitPrice(item) {
         return state.unitPrices[item.key] || 0;
-    }
-
-    function lineCost(item) {
-        return deficit(item) * unitPrice(item);
     }
 
     function iconSrc(item) {
@@ -505,8 +496,6 @@
             asc: "적은 순",
             desc: "많은 순",
         },
-        cost: { value: lineCost, desc: "비싼 순", asc: "싼 순" },
-        volume: { value: deficitVolume, desc: "큰 순", asc: "작은 순" },
         density: { value: iskPerM3, desc: "높은 순", asc: "낮은 순" },
         name: { value: null, asc: "가나다 순", desc: "역순" },
     };
@@ -1431,27 +1420,9 @@
         tdShort.appendChild(runOut);
         tr.appendChild(tdShort);
 
-        // 예상 비용 + 단가 — 부족하지 않으면 "0 ISK"(살 게 없으니 비용도 0). 부족한데도
-        // "—"면 그건 진짜로 값이 없는 경우(단가를 아직 못 받아 옴)라 isk()가 알아서 그렇게
-        // 찍는다 — 이 둘을 헷갈리면 "부피 조회가 안 된다"처럼 멀쩡한 0을 오류로 오해한다.
-        var tdIsk = document.createElement("td");
-        tdIsk.className = "tbl__n tbl__isk";
-        var total = document.createElement("span");
-        total.className = "isk";
-        total.textContent = short ? isk(lineCost(item)) : "0 ISK";
-        var unit = document.createElement("span");
-        unit.className = "isk__unit";
-        unit.textContent = unitPrice(item) ? unitPriceLabel(unitPrice(item)) + " /개" : "";
-        tdIsk.appendChild(total);
-        tdIsk.appendChild(unit);
-        tr.appendChild(tdIsk);
-
-        // 운반 부피 — 부족분을 전부 채우는 데 필요한 부피. 부족하지 않으면(채울 게 없으면)
-        // "0 m³" — 비용 열과 같은 이유로 "—"를 안 쓴다.
-        var tdVolume = document.createElement("td");
-        tdVolume.className = "tbl__n tbl__vol";
-        tdVolume.textContent = volume(deficitVolume(item)) + " m³";
-        tr.appendChild(tdVolume);
+        // 예상 비용/운반 부피는 표에서 뺐다 — 담지도 않은 걸 매 행마다 숫자로 박아 두는
+        // 게 오히려 오해를 샀다(목표 없는 아이템은 항상 0이라 "조회가 안 된다"로 보임).
+        // 실제로 살지/옮길지 정한 뒤의 값(개당·총액)은 매니페스트 쪽에서만 보여준다.
 
         // ISK/m³ — 부족 여부와 무관한 품목 자체의 성질이라 항상 보여준다.
         var tdDensity = document.createElement("td");
@@ -1592,9 +1563,9 @@
     // .tbl tbody tr.row 의 CSS height(52px)와 반드시 일치해야 한다 — 어긋나면
     // 스크롤할수록 렌더된 구간과 실제 스크롤 위치가 밀린다.
     var ROW_H = 52;
-    // <colgroup>의 <col> 개수(pick·ico·item·spark·bar·qty·short·isk·vol·density)와 같아야
+    // <colgroup>의 <col> 개수(pick·ico·item·spark·bar·qty·short·density)와 같아야
     // spacer 행의 colspan이 표 전체 폭을 정확히 덮는다.
-    var TBL_COLS = 10;
+    var TBL_COLS = 8;
     // 스크롤이 튀는 순간에도 빈 틈이 먼저 보이지 않게, 화면 위아래로 더 그려 두는 여유 행 수.
     var ROW_BUFFER = 8;
 
