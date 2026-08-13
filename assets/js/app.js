@@ -1427,12 +1427,14 @@
         tdShort.appendChild(runOut);
         tr.appendChild(tdShort);
 
-        // 예상 비용 + 단가
+        // 예상 비용 + 단가 — 부족하지 않으면 "0 ISK"(살 게 없으니 비용도 0). 부족한데도
+        // "—"면 그건 진짜로 값이 없는 경우(단가를 아직 못 받아 옴)라 isk()가 알아서 그렇게
+        // 찍는다 — 이 둘을 헷갈리면 "부피 조회가 안 된다"처럼 멀쩡한 0을 오류로 오해한다.
         var tdIsk = document.createElement("td");
         tdIsk.className = "tbl__n tbl__isk";
         var total = document.createElement("span");
         total.className = "isk";
-        total.textContent = short ? isk(lineCost(item)) : "—";
+        total.textContent = short ? isk(lineCost(item)) : "0 ISK";
         var unit = document.createElement("span");
         unit.className = "isk__unit";
         unit.textContent = unitPrice(item) ? unitPriceLabel(unitPrice(item)) + " /개" : "";
@@ -1440,11 +1442,11 @@
         tdIsk.appendChild(unit);
         tr.appendChild(tdIsk);
 
-        // 운반 부피 — 부족분을 전부 채우는 데 필요한 부피. 비용 열과 같은 규칙으로,
-        // 부족하지 않으면(채울 게 없으면) 숫자 대신 "—".
+        // 운반 부피 — 부족분을 전부 채우는 데 필요한 부피. 부족하지 않으면(채울 게 없으면)
+        // "0 m³" — 비용 열과 같은 이유로 "—"를 안 쓴다.
         var tdVolume = document.createElement("td");
         tdVolume.className = "tbl__n tbl__vol";
-        tdVolume.textContent = short ? volume(deficitVolume(item)) + " m³" : "—";
+        tdVolume.textContent = volume(deficitVolume(item)) + " m³";
         tr.appendChild(tdVolume);
 
         // ISK/m³ — 부족 여부와 무관한 품목 자체의 성질이라 항상 보여준다.
