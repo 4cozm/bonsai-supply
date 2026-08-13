@@ -221,9 +221,14 @@ select.field__input {
        아예 안 보였다 — table-layout: fixed에서는 min-width가 열 폭 하한으로 안 먹혀서
        (고정 열 폭 합이 표 폭을 넘으면 그냥 다 같이 짜부라진다) 매니페스트 자체 폭을
        360px로 다시 올렸다. 그래도 못 들어가는 긴 이름은 .mname 의 ellipsis(호버 시
-       title로 전체 이름)가 안전망으로 잘라낸다. .page의 max-width를 1600px로 올려
-       넓은 화면에서는 표 쪽이 그만큼 더 가져가게 해서, 표는 여전히 안 좁아진다. */
-    grid-template-columns: minmax(0, 1fr) 360px;
+       title로 전체 이름)가 안전망으로 잘라낸다.
+
+       매니페스트 열을 고정 px로 두면 넓은 화면(.page가 max-width 1600px에 닿는
+       지점부터)에서 남는 폭을 표(유일한 1fr)가 전부 가져간다 — 실측해보니 1920px에서
+       표 품목명 열이 실제 글자 폭보다 190px 가까이 남아돌았다. clamp로 매니페스트도
+       뷰포트에 따라 같이 자라게 해서, 넓은 화면에서는 매니페스트도 그 여유를 나눠
+       받는다(1440px 이하에서는 25vw가 360px 바닥에 걸려 지금까지 튜닝한 값 그대로). */
+    grid-template-columns: minmax(0, 1fr) clamp(360px, 25vw, 440px);
     gap: 10px;
     align-items: start;
     margin-top: 4px;
