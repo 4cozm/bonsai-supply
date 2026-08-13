@@ -138,27 +138,45 @@
 
     /* ── 재고 수준 → 색 ─────────────────────────────────── */
 
-    var RAMP = { low: [224, 91, 79], mid: [232, 163, 61], high: [82, 183, 136] };
+    var RAMP = {
+        low: [224, 91, 79],
+        mid: [232, 163, 61],
+        high: [82, 183, 136],
+        over: [63, 182, 196], // 100% 넘으면 점점 이쪽(--teal)으로 — 과잉 재고가 "더 좋다"가 아니라 "다른 상태"임을 색으로 구분
+        none: [111, 130, 150], // 목표 없음 — --dim과 맞춘 중립색
+    };
 
     /**
-     * 충족률(0~1+)을 레드→앰버→그린 사이에서 연속 보간한다.
+     * 충족률을 레드→앰버→그린→틸(파랑 계열) 사이에서 연속 보간한다. null(목표 없음)은
+     * 중립색을 준다.
      * 0.5 지점이 앰버 — "절반이면 주의"가 색으로 읽힌다.
      *
-     * 두 구간 모두 선형 대신 이징을 쓴다. 선형으로 섞으면 20%짜리가 이미 주황으로 보여서
-     * 정작 위험한 저재고가 덜 위험해 보인다. 아래쪽은 레드를 오래 붙들고,
-     * 위쪽은 목표에 거의 닿아야 그린이 된다.
+     * 0~100% 두 구간 모두 선형 대신 이징을 쓴다. 선형으로 섞으면 20%짜리가 이미
+     * 주황으로 보여서 정작 위험한 저재고가 덜 위험해 보인다. 아래쪽은 레드를 오래
+     * 붙들고, 위쪽은 목표에 거의 닿아야 그린이 된다.
+     *
+     * 100% 넘는 구간은 200%에서 완전히 틸이 되도록 선형으로 잡는다 — 과잉은
+     * "위험하지 않은 변화"라 급하게 이징할 이유가 없다.
      */
     function rampColor(ratio) {
-        var t = Math.max(0, Math.min(1, ratio));
+        if (ratio == null) return "rgb(" + RAMP.none.join(",") + ")";
+
         var from, to, k;
-        if (t < 0.5) {
-            from = RAMP.low;
-            to = RAMP.mid;
-            k = Math.pow(t / 0.5, 1.8);
+        if (ratio > 1) {
+            from = RAMP.high;
+            to = RAMP.over;
+            k = Math.max(0, Math.min(1, ratio - 1));
         } else {
-            from = RAMP.mid;
-            to = RAMP.high;
-            k = Math.pow((t - 0.5) / 0.5, 1.3);
+            var t = Math.max(0, ratio);
+            if (t < 0.5) {
+                from = RAMP.low;
+                to = RAMP.mid;
+                k = Math.pow(t / 0.5, 1.8);
+            } else {
+                from = RAMP.mid;
+                to = RAMP.high;
+                k = Math.pow((t - 0.5) / 0.5, 1.3);
+            }
         }
         var c = from.map(function (v, i) {
             return Math.round(v + (to[i] - v) * k);
@@ -168,8 +186,10 @@
 
     /* ── 파생값 ─────────────────────────────────────────── */
 
+    // 목표를 0으로 고쳐 두면 "추적 안 함"으로 취급한다 — null(애초에 목표를 설정한 적
+    // 없음)과 0(있었는데 이제 안 볼 거임)을 프론트에서는 굳이 구분하지 않는다.
     function hasNoTarget(item) {
-        return item.target == null;
+        return item.target == null || item.target === 0;
     }
 
     function deficit(item) {
@@ -182,11 +202,15 @@
     }
 
     function included(item) {
-        return isShort(item) && state.included.has(item.name);
+        return isShort(item) && state.included.has(item.key);
     }
 
+    // 목표가 없으면(또는 0으로 꺼져 있으면) 비율 자체가 의미 없다 — null로 반환해서
+    // 호출부(막대바/스파크라인 색 등)가 "없음"으로 표시하게 한다. 목표를 넘긴
+    // 경우는 캡을 씌우지 않는다 — 120%면 120%로 그대로 보여야 과잉 재고가 눈에 띈다.
     function ratioOf(item) {
-        return item.target > 0 ? item.stocked / item.target : 1;
+        if (hasNoTarget(item)) return null;
+        return item.stocked / item.target;
     }
 
     /**
@@ -216,7 +240,7 @@
      */
     function manifestQtyOf(item) {
         var max = deficit(item);
-        var override = state.manifestQty[item.name];
+        var override = state.manifestQty[item.key];
         if (override == null) return max;
         return Math.max(0, Math.min(max, override));
     }
@@ -226,8 +250,8 @@
         var clamped = Math.max(0, Math.min(max, isNaN(qty) ? 0 : Math.round(qty)));
         // 기본값과 같아지면 오버라이드를 지운다 — 나중에 목표가 바뀌어도 "전체"를 계속
         // 따라가게 하려는 것이다. 숫자를 박아 두면 그 순간의 부족분에 고정되어 버린다.
-        if (clamped === max) delete state.manifestQty[item.name];
-        else state.manifestQty[item.name] = clamped;
+        if (clamped === max) delete state.manifestQty[item.key];
+        else state.manifestQty[item.key] = clamped;
     }
 
     function manifestLineVolume(item) {
@@ -239,7 +263,7 @@
     }
 
     function unitPrice(item) {
-        return state.unitPrices[item.name] || 0;
+        return state.unitPrices[item.key] || 0;
     }
 
     function lineCost(item) {
@@ -335,7 +359,18 @@
                 var info = typeInfo[raw.typeId] || {};
                 return {
                     typeId: raw.typeId,
-                    name: info.name || "이름 미확인 (typeId " + raw.typeId + ")",
+                    // 함선처럼 게임 내 커스텀 이름(itemName)이 있으면 그게 곧 이 행의
+                    // 정체성이다 — 타입명 대신 그대로 쓴다("세이버 x13"이 아니라 배마다
+                    // 다른 이름으로 구분해서 보여주는 게 목적). group/unitVolume은 이름과
+                    // 무관하게 typeId로만 정해진다.
+                    itemName: raw.itemName || null,
+                    // state.baseTarget/manifestQty/included/unitPrices 는 전부 이 key로
+                    // 찾는다 — name이 아니다. 서로 다른 typeId의 함선 두 대가 커스텀명을
+                    // 우연히 똑같이 지으면(예: 둘 다 "Bait") name만으로는 구분이 안 돼서
+                    // 목표 편집·매니페스트 포함·단가가 서로 새 버린다. typeId를 같이
+                    // 섞어야 항상 유일하다.
+                    key: raw.typeId + "::" + (raw.itemName || ""),
+                    name: raw.itemName || info.name || "이름 미확인 (typeId " + raw.typeId + ")",
                     group: info.group || "",
                     unitVolume: info.unitVolume || 0,
                     stocked: raw.stocked,
@@ -468,6 +503,11 @@
             if (!spec.value) return sign * a.name.localeCompare(b.name, "ko");
             var av = spec.value(a);
             var bv = spec.value(b);
+            // null(목표 없음이라 비율 계산 불가, ratioOf 참고)도 Infinity와 똑같이
+            // 취급한다 — isFinite(null)이 true라서 그냥 두면 0으로 취급돼 "가장 부족한
+            // 품목"으로 잘못 섞여 들어간다.
+            if (av == null) av = Infinity;
+            if (bv == null) bv = Infinity;
             // Infinity(소비 없음)는 어느 방향이든 끝으로 보낸다 — 정렬의 목적이
             // 급한 것을 앞에 두는 것이지, 계산 불가한 항목을 앞세우는 게 아니다.
             if (!isFinite(av) && !isFinite(bv)) return 0;
@@ -505,17 +545,28 @@
 
     function buildBar(item, index) {
         var ratio = ratioOf(item);
-        var pct = Math.round(ratio * 100);
-        var color = rampColor(ratio);
 
         var track = document.createElement("div");
         track.className = "bar__track";
-        track.style.setProperty("--fill", color);
+        track.style.setProperty("--fill", rampColor(ratio));
         track.setAttribute("role", "img");
+
+        if (ratio == null) {
+            track.setAttribute("aria-label", "목표 없음");
+            var noneLabel = document.createElement("span");
+            noneLabel.className = "bar__pct";
+            noneLabel.textContent = "없음";
+            track.appendChild(noneLabel);
+            return track;
+        }
+
+        var pct = Math.round(ratio * 100);
         track.setAttribute("aria-label", "목표 대비 " + pct + "%");
 
         var fill = document.createElement("div");
         fill.className = "bar__fill" + (state.firstPaint ? " is-new" : "");
+        // 막대 너비 자체는 트랙을 넘길 수 없으니 100%에서 캡 — 그 이상은 --over 마커와
+        // 퍼센트 숫자(캡 없음)로 표현한다.
         fill.style.width = Math.min(100, Math.max(ratio > 0 ? 2 : 0, pct)) + "%";
         if (state.firstPaint) fill.style.setProperty("--d", Math.min(index, 12) * 28 + "ms");
         track.appendChild(fill);
@@ -695,21 +746,21 @@
      * "이건 아직 서버에 없는 값"이라는 것도 드러나야 하기 때문이다.
      */
     function setTarget(item, next) {
-        if (!(item.name in state.baseTarget)) state.baseTarget[item.name] = item.target;
+        if (!(item.key in state.baseTarget)) state.baseTarget[item.key] = item.target;
         item.target = next;
         // 원래 값으로 되돌아왔으면 변경이 아니다.
-        if (state.baseTarget[item.name] === next) delete state.baseTarget[item.name];
+        if (state.baseTarget[item.key] === next) delete state.baseTarget[item.key];
     }
 
     function isDirty(item) {
-        return item.name in state.baseTarget;
+        return item.key in state.baseTarget;
     }
 
     function pendingChanges() {
         return state.items
             .filter(isDirty)
             .map(function (item) {
-                return { item: item, from: state.baseTarget[item.name], to: item.target };
+                return { item: item, from: state.baseTarget[item.key], to: item.target };
             });
     }
 
@@ -721,7 +772,7 @@
 
     function resetTargets() {
         state.items.forEach(function (item) {
-            if (isDirty(item)) item.target = state.baseTarget[item.name];
+            if (isDirty(item)) item.target = state.baseTarget[item.key];
         });
         state.baseTarget = {};
         render();
@@ -752,12 +803,12 @@
         if (included(item) === on) return false;
 
         if (on) {
-            state.included.add(item.name);
+            state.included.add(item.key);
         } else {
-            state.included.delete(item.name);
+            state.included.delete(item.key);
             // 다시 체크하면 항상 그 시점의 전체 부족분에서 시작한다 — 예전에 줄여 뒀던
             // 수량을 기억해 뒀다가 불쑥 되돌리면 놀란다.
-            delete state.manifestQty[item.name];
+            delete state.manifestQty[item.key];
         }
 
         var tr = rowFor(item);
@@ -1155,8 +1206,12 @@
     function setPreset(item, preset) {
         range.preset = preset;
         var days = HISTORY_DAYS_BY_PRESET[preset] || 7;
-        return window.BonsaiApi.fetchItemHistory(state.structureId, item.typeId, days).then(
-            function (res) {
+        return window.BonsaiApi.fetchItemHistory(
+            state.structureId,
+            item.typeId,
+            days,
+            item.itemName
+        ).then(function (res) {
                 item.history = (res.history || []).map(function (p) {
                     return p.quantity;
                 });
@@ -1554,14 +1609,51 @@
         saveModal.root.showModal();
     }
 
+    /**
+     * Promise.all이 아니라 allSettled를 쓴다 — 여러 건을 한 번에 저장할 때 하나가
+     * 실패했다고 이미 서버에 반영된 나머지까지 "저장 안 됨" 상태로 묶어 두면 안 된다
+     * (묶어 두면 "되돌리기"를 눌렀을 때 이미 저장된 값까지 로컬에서 옛날 값으로
+     * 되돌아가 버려서 서버와 어긋난다). 성공한 것만 baseTarget에서 지우고, 실패한
+     * 것만 dirty 상태로 남겨서 다시 저장할 수 있게 한다.
+     */
     function commitTargets() {
         var changes = pendingChanges();
-        // TODO: 백엔드 연결 시 여기서 PATCH /api/targets 를 보낸다.
-        // 지금은 성공했다고 가정하고 로컬 상태만 확정한다.
-        state.baseTarget = {};
-        saveModal.root.close();
-        render();
-        toast(num(changes.length) + "건을 저장했습니다.");
+        Promise.allSettled(
+            changes.map(function (c) {
+                return window.BonsaiApi.saveTarget(state.structureId, {
+                    typeId: c.item.typeId,
+                    itemName: c.item.itemName,
+                    targetQty: c.to,
+                }).then(function () {
+                    return c;
+                });
+            })
+        ).then(function (results) {
+            var succeeded = 0;
+            var failed = 0;
+            results.forEach(function (r) {
+                if (r.status === "fulfilled") {
+                    delete state.baseTarget[r.value.item.key];
+                    succeeded++;
+                } else {
+                    failed++;
+                }
+            });
+
+            saveModal.root.close();
+            render();
+
+            if (failed === 0) {
+                toast(num(succeeded) + "건을 저장했습니다.");
+            } else if (succeeded === 0) {
+                toast("저장 중 오류가 발생했습니다. 다시 시도해주세요.", "warn");
+            } else {
+                toast(
+                    num(succeeded) + "건 저장, " + num(failed) + "건 실패 — 실패한 항목은 다시 저장해주세요.",
+                    "warn"
+                );
+            }
+        });
     }
 
     /* ── 품목 추가 모달 ─────────────────────────────────── */
