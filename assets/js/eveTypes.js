@@ -17,6 +17,30 @@
     var GROUP_CACHE_PREFIX = "bonsai:evegroup:v1:";
     var CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30일
 
+    // 관성적으로 영문 이브 클라를 쓰는 사람도 많다 — 매니페스트를 그 클라의 Multibuy에
+    // 붙여 넣으려면 이름이 클라 언어와 맞아야 한다. 백엔드는 안 건드리고(파일 위 설명
+    // 참고) 여기서만 언어를 바꾼다. 로컬스토리지에 저장해서 다음 방문에도 유지한다.
+    var LANG_STORAGE_KEY = "bonsai:lang";
+    var DEFAULT_LANG = "ko";
+
+    function getLanguage() {
+        try {
+            var saved = localStorage.getItem(LANG_STORAGE_KEY);
+            return saved === "en-us" ? "en-us" : DEFAULT_LANG;
+        } catch (e) {
+            return DEFAULT_LANG;
+        }
+    }
+
+    function setLanguage(lang) {
+        try {
+            localStorage.setItem(LANG_STORAGE_KEY, lang === "en-us" ? "en-us" : "ko");
+        } catch (e) {
+            // localStorage 비활성화 — 이번 로드에서는 getLanguage()가 계속 기본값을 주므로
+            // 토글을 눌러도 새로고침하면 도로 한국어로 돌아간다. 조용히 넘어간다.
+        }
+    }
+
     function readCache(key) {
         try {
             var raw = localStorage.getItem(key);
@@ -38,7 +62,9 @@
     }
 
     function fetchType(typeId) {
-        return fetch(ESI_BASE + "/universe/types/" + typeId + "/?datasource=tranquility&language=ko")
+        return fetch(
+            ESI_BASE + "/universe/types/" + typeId + "/?datasource=tranquility&language=" + getLanguage()
+        )
             .then(function (r) {
                 if (!r.ok) throw new Error("ESI universe/types " + r.status);
                 return r.json();
@@ -50,7 +76,7 @@
 
     function fetchGroupName(groupId) {
         return fetch(
-            ESI_BASE + "/universe/groups/" + groupId + "/?datasource=tranquility&language=ko"
+            ESI_BASE + "/universe/groups/" + groupId + "/?datasource=tranquility&language=" + getLanguage()
         )
             .then(function (r) {
                 if (!r.ok) throw new Error("ESI universe/groups " + r.status);
@@ -118,6 +144,9 @@
      *          pricing.js와 같은 원칙).
      */
     function resolveTypes(typeIds) {
+        // 언어별로 캐시를 분리한다 — 안 그러면 언어를 바꿔도 이미 캐싱된 typeId는
+        // 예전 언어값이 TTL(30일) 동안 그대로 남는다.
+        var lang = getLanguage();
         var uniqueIds = [];
         var seen = Object.create(null);
         typeIds.forEach(function (id) {
@@ -130,7 +159,7 @@
         var typeResult = {}; // typeId -> {name, groupId, unitVolume}
         var toFetchTypes = [];
         uniqueIds.forEach(function (id) {
-            var cached = readCache(CACHE_PREFIX + id);
+            var cached = readCache(CACHE_PREFIX + lang + ":" + id);
             if (cached) typeResult[id] = cached;
             else toFetchTypes.push(id);
         });
@@ -140,7 +169,7 @@
                 return fetchType(id);
             }).then(
                 function (info) {
-                    writeCache(CACHE_PREFIX + id, info);
+                    writeCache(CACHE_PREFIX + lang + ":" + id, info);
                     typeResult[id] = info;
                 },
                 function () {
@@ -163,7 +192,7 @@
             var groupNames = {};
             var toFetchGroups = [];
             groupIds.forEach(function (gid) {
-                var cached = readCache(GROUP_CACHE_PREFIX + gid);
+                var cached = readCache(GROUP_CACHE_PREFIX + lang + ":" + gid);
                 if (cached) groupNames[gid] = cached;
                 else toFetchGroups.push(gid);
             });
@@ -173,7 +202,7 @@
                     return fetchGroupName(gid);
                 }).then(
                     function (name) {
-                        writeCache(GROUP_CACHE_PREFIX + gid, name);
+                        writeCache(GROUP_CACHE_PREFIX + lang + ":" + gid, name);
                         groupNames[gid] = name;
                     },
                     function () {
@@ -197,5 +226,9 @@
         });
     }
 
-    window.BonsaiEveTypes = { resolveTypes: resolveTypes };
+    window.BonsaiEveTypes = {
+        resolveTypes: resolveTypes,
+        getLanguage: getLanguage,
+        setLanguage: setLanguage,
+    };
 })();
