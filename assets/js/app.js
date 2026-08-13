@@ -359,7 +359,12 @@
                 var info = typeInfo[raw.typeId] || {};
                 return {
                     typeId: raw.typeId,
-                    name: info.name || "이름 미확인 (typeId " + raw.typeId + ")",
+                    // 함선처럼 게임 내 커스텀 이름(itemName)이 있으면 그게 곧 이 행의
+                    // 정체성이다 — 타입명 대신 그대로 쓴다("세이버 x13"이 아니라 배마다
+                    // 다른 이름으로 구분해서 보여주는 게 목적). group/unitVolume은 이름과
+                    // 무관하게 typeId로만 정해진다.
+                    itemName: raw.itemName || null,
+                    name: raw.itemName || info.name || "이름 미확인 (typeId " + raw.typeId + ")",
                     group: info.group || "",
                     unitVolume: info.unitVolume || 0,
                     stocked: raw.stocked,
@@ -1195,8 +1200,12 @@
     function setPreset(item, preset) {
         range.preset = preset;
         var days = HISTORY_DAYS_BY_PRESET[preset] || 7;
-        return window.BonsaiApi.fetchItemHistory(state.structureId, item.typeId, days).then(
-            function (res) {
+        return window.BonsaiApi.fetchItemHistory(
+            state.structureId,
+            item.typeId,
+            days,
+            item.itemName
+        ).then(function (res) {
                 item.history = (res.history || []).map(function (p) {
                     return p.quantity;
                 });
@@ -1596,12 +1605,26 @@
 
     function commitTargets() {
         var changes = pendingChanges();
-        // TODO: 백엔드 연결 시 여기서 PATCH /api/targets 를 보낸다.
-        // 지금은 성공했다고 가정하고 로컬 상태만 확정한다.
-        state.baseTarget = {};
-        saveModal.root.close();
-        render();
-        toast(num(changes.length) + "건을 저장했습니다.");
+        Promise.all(
+            changes.map(function (c) {
+                return window.BonsaiApi.saveTarget(state.structureId, {
+                    typeId: c.item.typeId,
+                    itemName: c.item.itemName,
+                    targetQty: c.to,
+                });
+            })
+        )
+            .then(function () {
+                state.baseTarget = {};
+                saveModal.root.close();
+                render();
+                toast(num(changes.length) + "건을 저장했습니다.");
+            })
+            .catch(function () {
+                // state.baseTarget을 그대로 둔다 — "저장 안 된 변경"이 안 사라져야
+                // 사용자가 다시 저장을 시도할 수 있다.
+                toast("저장 중 오류가 발생했습니다. 다시 시도해주세요.", "warn");
+            });
     }
 
     /* ── 품목 추가 모달 ─────────────────────────────────── */
