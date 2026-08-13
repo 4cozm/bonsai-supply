@@ -138,27 +138,45 @@
 
     /* ── 재고 수준 → 색 ─────────────────────────────────── */
 
-    var RAMP = { low: [224, 91, 79], mid: [232, 163, 61], high: [82, 183, 136] };
+    var RAMP = {
+        low: [224, 91, 79],
+        mid: [232, 163, 61],
+        high: [82, 183, 136],
+        over: [63, 182, 196], // 100% 넘으면 점점 이쪽(--teal)으로 — 과잉 재고가 "더 좋다"가 아니라 "다른 상태"임을 색으로 구분
+        none: [111, 130, 150], // 목표 없음 — --dim과 맞춘 중립색
+    };
 
     /**
-     * 충족률(0~1+)을 레드→앰버→그린 사이에서 연속 보간한다.
+     * 충족률을 레드→앰버→그린→틸(파랑 계열) 사이에서 연속 보간한다. null(목표 없음)은
+     * 중립색을 준다.
      * 0.5 지점이 앰버 — "절반이면 주의"가 색으로 읽힌다.
      *
-     * 두 구간 모두 선형 대신 이징을 쓴다. 선형으로 섞으면 20%짜리가 이미 주황으로 보여서
-     * 정작 위험한 저재고가 덜 위험해 보인다. 아래쪽은 레드를 오래 붙들고,
-     * 위쪽은 목표에 거의 닿아야 그린이 된다.
+     * 0~100% 두 구간 모두 선형 대신 이징을 쓴다. 선형으로 섞으면 20%짜리가 이미
+     * 주황으로 보여서 정작 위험한 저재고가 덜 위험해 보인다. 아래쪽은 레드를 오래
+     * 붙들고, 위쪽은 목표에 거의 닿아야 그린이 된다.
+     *
+     * 100% 넘는 구간은 200%에서 완전히 틸이 되도록 선형으로 잡는다 — 과잉은
+     * "위험하지 않은 변화"라 급하게 이징할 이유가 없다.
      */
     function rampColor(ratio) {
-        var t = Math.max(0, Math.min(1, ratio));
+        if (ratio == null) return "rgb(" + RAMP.none.join(",") + ")";
+
         var from, to, k;
-        if (t < 0.5) {
-            from = RAMP.low;
-            to = RAMP.mid;
-            k = Math.pow(t / 0.5, 1.8);
+        if (ratio > 1) {
+            from = RAMP.high;
+            to = RAMP.over;
+            k = Math.max(0, Math.min(1, ratio - 1));
         } else {
-            from = RAMP.mid;
-            to = RAMP.high;
-            k = Math.pow((t - 0.5) / 0.5, 1.3);
+            var t = Math.max(0, ratio);
+            if (t < 0.5) {
+                from = RAMP.low;
+                to = RAMP.mid;
+                k = Math.pow(t / 0.5, 1.8);
+            } else {
+                from = RAMP.mid;
+                to = RAMP.high;
+                k = Math.pow((t - 0.5) / 0.5, 1.3);
+            }
         }
         var c = from.map(function (v, i) {
             return Math.round(v + (to[i] - v) * k);
@@ -168,8 +186,10 @@
 
     /* ── 파생값 ─────────────────────────────────────────── */
 
+    // 목표를 0으로 고쳐 두면 "추적 안 함"으로 취급한다 — null(애초에 목표를 설정한 적
+    // 없음)과 0(있었는데 이제 안 볼 거임)을 프론트에서는 굳이 구분하지 않는다.
     function hasNoTarget(item) {
-        return item.target == null;
+        return item.target == null || item.target === 0;
     }
 
     function deficit(item) {
@@ -185,8 +205,12 @@
         return isShort(item) && state.included.has(item.name);
     }
 
+    // 목표가 없으면(또는 0으로 꺼져 있으면) 비율 자체가 의미 없다 — null로 반환해서
+    // 호출부(막대바/스파크라인 색 등)가 "없음"으로 표시하게 한다. 목표를 넘긴
+    // 경우는 캡을 씌우지 않는다 — 120%면 120%로 그대로 보여야 과잉 재고가 눈에 띈다.
     function ratioOf(item) {
-        return item.target > 0 ? item.stocked / item.target : 1;
+        if (hasNoTarget(item)) return null;
+        return item.stocked / item.target;
     }
 
     /**
@@ -468,6 +492,11 @@
             if (!spec.value) return sign * a.name.localeCompare(b.name, "ko");
             var av = spec.value(a);
             var bv = spec.value(b);
+            // null(목표 없음이라 비율 계산 불가, ratioOf 참고)도 Infinity와 똑같이
+            // 취급한다 — isFinite(null)이 true라서 그냥 두면 0으로 취급돼 "가장 부족한
+            // 품목"으로 잘못 섞여 들어간다.
+            if (av == null) av = Infinity;
+            if (bv == null) bv = Infinity;
             // Infinity(소비 없음)는 어느 방향이든 끝으로 보낸다 — 정렬의 목적이
             // 급한 것을 앞에 두는 것이지, 계산 불가한 항목을 앞세우는 게 아니다.
             if (!isFinite(av) && !isFinite(bv)) return 0;
@@ -505,17 +534,28 @@
 
     function buildBar(item, index) {
         var ratio = ratioOf(item);
-        var pct = Math.round(ratio * 100);
-        var color = rampColor(ratio);
 
         var track = document.createElement("div");
         track.className = "bar__track";
-        track.style.setProperty("--fill", color);
+        track.style.setProperty("--fill", rampColor(ratio));
         track.setAttribute("role", "img");
+
+        if (ratio == null) {
+            track.setAttribute("aria-label", "목표 없음");
+            var noneLabel = document.createElement("span");
+            noneLabel.className = "bar__pct";
+            noneLabel.textContent = "없음";
+            track.appendChild(noneLabel);
+            return track;
+        }
+
+        var pct = Math.round(ratio * 100);
         track.setAttribute("aria-label", "목표 대비 " + pct + "%");
 
         var fill = document.createElement("div");
         fill.className = "bar__fill" + (state.firstPaint ? " is-new" : "");
+        // 막대 너비 자체는 트랙을 넘길 수 없으니 100%에서 캡 — 그 이상은 --over 마커와
+        // 퍼센트 숫자(캡 없음)로 표현한다.
         fill.style.width = Math.min(100, Math.max(ratio > 0 ? 2 : 0, pct)) + "%";
         if (state.firstPaint) fill.style.setProperty("--d", Math.min(index, 12) * 28 + "ms");
         track.appendChild(fill);
