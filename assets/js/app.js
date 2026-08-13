@@ -1608,6 +1608,46 @@
         state.firstPaint = false;
     }
 
+    /**
+     * 정렬 기준/방향만 바뀌었을 때 쓴다 — render()처럼 행을 통째로 새로 만들지
+     * 않고 이미 만들어진 <tr>(스파크라인 SVG, 호버 리스너 포함)을 그대로 옮겨서
+     * 순서만 바꾼다. 몇백 개짜리 표에서 정렬을 누를 때마다 SVG를 전부 다시
+     * 그리던 게 체감 지연의 진짜 원인이었다 — 실제 정렬 계산(Array.sort) 자체는
+     * 몇백 개 기준으로도 무시할 만한 시간이다.
+     *
+     * 안전하게 재사용할 수 있는 경우(지금 화면에 있는 행 집합과 새로 계산한
+     * 목록이 정확히 같은 경우)에만 이 경로를 타고, 아니면 그냥 render()로
+     * 넘긴다 — 필터/검색/새 데이터 로드처럼 행 집합 자체가 바뀌는 경우는
+     * 애초에 이 함수를 안 부른다(정렬 버튼들만 호출).
+     */
+    function resortRows() {
+        var items = visibleItems();
+        var current = el.rows.children;
+
+        if (current.length !== items.length) {
+            render();
+            return;
+        }
+
+        var byKey = new Map();
+        for (var i = 0; i < current.length; i++) {
+            byKey.set(current[i].__item.key, current[i]);
+        }
+
+        var frag = document.createDocumentFragment();
+        for (var j = 0; j < items.length; j++) {
+            var tr = byKey.get(items[j].key);
+            if (!tr) {
+                render(); // 못 찾으면(안전망) 전체를 새로 그린다.
+                return;
+            }
+            frag.appendChild(tr); // 이미 DOM에 붙어있는 노드를 옮기는 것 — 리스너가 그대로 유지된다.
+        }
+        el.rows.appendChild(frag);
+
+        renderPending();
+    }
+
     /* ── 저장 확인 모달 ─────────────────────────────────── */
 
     var saveModal = {
@@ -2179,7 +2219,7 @@
             state.sort.asc = ASC_DEFAULT_SORT_KEYS.indexOf(key) !== -1;
         }
         renderSortDir();
-        render();
+        resortRows();
     }
 
     document.querySelectorAll("[data-sort-key]").forEach(function (btn) {
@@ -2191,7 +2231,7 @@
     el.sortDir.addEventListener("click", function () {
         state.sort.asc = !state.sort.asc;
         renderSortDir();
-        render();
+        resortRows();
     });
 
     el.copy.addEventListener("click", copyManifest);
