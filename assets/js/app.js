@@ -228,21 +228,22 @@
 
     /**
      * 매니페스트에 실을 수량. 기본은 부족분 전체지만 사용자나 오마카세가 조절할 수 있다.
-     * 저장된 오버라이드가 현재 부족분보다 크면(목표를 낮췄거나 재고가 늘어난 경우) 읽는
-     * 시점에 자연히 잘라낸다 — 오버라이드 자체를 그때그때 지우고 다닐 필요가 없다.
+     * 위쪽은 막지 않는다 — "오늘 운송 김에 여유분까지 미리 사 두자"처럼 부족분보다
+     * 더 담는 것도 정당한 선택이라, 초과 자체는 buildManifestRow의 경고 표시로만
+     * 알려주고 입력은 막지 않는다. 저장된 오버라이드가 현재 부족분과 같아지면(목표를
+     * 낮췄거나 재고가 늘어난 경우) 읽는 시점에 오버라이드를 지운다 — 그래야 나중에
+     * 목표가 또 바뀌어도 "전체"를 계속 따라간다.
      */
     function manifestQtyOf(item) {
         var max = deficit(item);
         var override = state.manifestQty[item.key];
         if (override == null) return max;
-        return Math.max(0, Math.min(max, override));
+        return Math.max(0, override);
     }
 
     function setManifestQty(item, qty) {
         var max = deficit(item);
-        var clamped = Math.max(0, Math.min(max, isNaN(qty) ? 0 : Math.round(qty)));
-        // 기본값과 같아지면 오버라이드를 지운다 — 나중에 목표가 바뀌어도 "전체"를 계속
-        // 따라가게 하려는 것이다. 숫자를 박아 두면 그 순간의 부족분에 고정되어 버린다.
+        var clamped = Math.max(0, isNaN(qty) ? 0 : Math.round(qty));
         if (clamped === max) delete state.manifestQty[item.key];
         else state.manifestQty[item.key] = clamped;
     }
@@ -1485,21 +1486,35 @@
         tdItem.appendChild(wrap);
         tr.appendChild(tdItem);
 
-        // 수량 — 매니페스트의 조절 지점. 기본은 부족분 전체, 위로는 그만큼이 상한이다.
+        // 수량 — 매니페스트의 조절 지점. 부족분이 기본이지만 위쪽은 막지 않는다("오늘
+        // 가는 김에 여유분도 미리 사 두자"). 대신 부족분을 넘기면 옆에 작은 경고를 띄운다.
         var tdQty = document.createElement("td");
-        tdQty.className = "mtbl__n";
+        tdQty.className = "mtbl__n mtbl__qty";
+        var qtyWrap = document.createElement("span");
+        qtyWrap.className = "mqty__wrap";
         var qty = document.createElement("input");
         qty.type = "number";
         qty.min = "0";
-        qty.max = String(deficit(item));
         qty.className = "mqty";
-        qty.value = String(manifestQtyOf(item));
+        var currentQty = manifestQtyOf(item);
+        qty.value = String(currentQty);
         qty.setAttribute("aria-label", item.name + " 매니페스트 수량");
         qty.addEventListener("change", function () {
             setManifestQty(item, parseInt(qty.value, 10));
             renderManifest();
         });
-        tdQty.appendChild(qty);
+        qtyWrap.appendChild(qty);
+        var over = currentQty - deficit(item);
+        if (over > 0) {
+            var warn = document.createElement("span");
+            warn.className = "mqty__warn";
+            warn.textContent = "▲";
+            warn.setAttribute("aria-hidden", "true");
+            warn.title = "목표치보다 " + num(over) + "개 초과";
+            qtyWrap.appendChild(warn);
+            qty.setAttribute("aria-label", item.name + " 매니페스트 수량, 목표치보다 " + num(over) + "개 초과");
+        }
+        tdQty.appendChild(qtyWrap);
         tr.appendChild(tdQty);
 
         var tdVol = document.createElement("td");
