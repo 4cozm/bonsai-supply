@@ -29,6 +29,23 @@
         <link rel="stylesheet" href="assets/css/app.css" />
     </head>
     <body>
+        <!--
+            인증 안내 오버레이. 로그인은 폼이 아니라 Discord `/보급` 명령이 발급하는
+            매직링크로만 하므로, 여기엔 "가서 받아오라"는 안내만 있다. 기본은 숨김 —
+            app.js가 시작할 때 GET /auth/me로 확인해서 실패하면 보여주고 그 아래 앱은
+            아예 안 띄운다(데이터 요청 자체를 안 함).
+        -->
+        <div class="authgate" data-authgate hidden>
+            <div class="authgate__box">
+                <p class="authgate__mark" aria-hidden="true">🔒</p>
+                <h1 class="authgate__title">로그인이 필요합니다</h1>
+                <p class="authgate__msg" data-authgate-msg>
+                    Discord에서 <code>/보급</code> 명령을 실행해 로그인 링크를 받아
+                    접속해주세요. 링크는 5분간, 1회만 유효합니다.
+                </p>
+            </div>
+        </div>
+
         <a class="skip" href="#stock">재고 목록으로 건너뛰기</a>
 
         <header class="rail">
@@ -41,11 +58,8 @@
             <div class="rail__controls">
                 <label class="field">
                     <span class="field__label">행어</span>
-                    <select class="field__input" id="hangar">
-                        <option>Jita IV-4 — Corp Hangar 1</option>
-                        <option>Amarr VIII — Corp Hangar 2</option>
-                        <option>1DQ1-A — Keepstar Deliveries</option>
-                    </select>
+                    <!-- 목록은 GET /v1/stock/structures 로 app.js가 채운다. -->
+                    <select class="field__input" id="hangar"></select>
                 </label>
                 <label class="field">
                     <span class="field__label">상권</span>
@@ -353,7 +367,8 @@
         <div class="tip" data-tip hidden aria-hidden="true"></div>
         <p class="toast" data-toast role="status" aria-live="polite" hidden></p>
 
-        <script src="assets/js/data.mock.js"></script>
+        <script src="assets/js/api.js"></script>
+        <script src="assets/js/eveTypes.js"></script>
         <script src="assets/js/pricing.js"></script>
         <script src="assets/js/esi.js"></script>
         <script src="assets/js/app.js"></script>

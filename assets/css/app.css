@@ -1298,6 +1298,53 @@ select.field__input {
     border-color: var(--amber);
 }
 
+/* ── 인증 안내 오버레이 ─────────────────────────────────── */
+
+.authgate {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--void);
+    padding: var(--gut);
+}
+
+.authgate__box {
+    max-width: 420px;
+    padding: 32px 28px;
+    border: 1px solid var(--edge);
+    background: var(--plate);
+    text-align: center;
+}
+
+.authgate__mark {
+    margin: 0 0 12px;
+    font-size: 28px;
+}
+
+.authgate__title {
+    margin: 0 0 10px;
+    font: 600 20px/1.3 var(--cond);
+    letter-spacing: 0.02em;
+    color: var(--frost);
+}
+
+.authgate__msg {
+    margin: 0;
+    font: 13px/1.6 var(--sans);
+    color: var(--dim);
+}
+
+.authgate__msg code {
+    padding: 1px 6px;
+    border: 1px solid var(--edge);
+    background: var(--hull);
+    color: var(--teal);
+    font: 12px var(--mono);
+}
+
 /* ── 로드 시퀀스: 바가 한 번 차오른다 ──────────────────── */
 
 .bar__fill.is-new {

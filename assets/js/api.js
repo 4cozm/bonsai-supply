@@ -1,0 +1,92 @@
+/**
+ * bonsai-bot-v2 API 클라이언트.
+ *
+ * 세션은 httpOnly 쿠키(bonsai_session)로 관리된다 — 로그인은 Discord `/보급`
+ * 명령이 발급하는 매직링크로만 하고, 이 파일은 그 쿠키를 매 요청에 자동으로
+ * 실어 보내는(credentials:"include") 것 말고는 인증에 관여하지 않는다.
+ *
+ * API 서버가 다른 오리진(api.catalyst-for-you.com)이라 모든 요청이 크로스오리진
+ * fetch다 — credentials:"include" 없으면 쿠키가 안 실리고, 서버 쪽 CORS가
+ * Access-Control-Allow-Credentials:true + 정확한 origin(와일드카드 불가)이어야
+ * 브라우저가 응답을 통과시킨다(서버는 이미 그렇게 설정돼 있음).
+ */
+(function () {
+    "use strict";
+
+    var API_BASE = "https://api.catalyst-for-you.com";
+
+    function get(path) {
+        return fetch(API_BASE + path, { credentials: "include" }).then(function (r) {
+            return r.json().then(
+                function (body) {
+                    return { status: r.status, ok: r.ok, body: body };
+                },
+                function () {
+                    // 401 등은 body가 없을 수도 있다(예: /auth/me 401은 body 없음).
+                    return { status: r.status, ok: r.ok, body: null };
+                }
+            );
+        });
+    }
+
+    /**
+     * 로그인 여부 확인. 세션이 없거나 만료됐으면 ok:false만 온다(에러가 아니라
+     * 정상적으로 나올 수 있는 상태).
+     * @returns {Promise<{ok:boolean, discordId?:string, tenantKey?:string}>}
+     */
+    function checkAuth() {
+        return get("/auth/me").then(function (res) {
+            if (!res.ok) return { ok: false };
+            return res.body;
+        });
+    }
+
+    /** @returns {Promise<{structureId:string, displayName:string}[]>} */
+    function fetchStructures() {
+        return get("/v1/stock/structures").then(function (res) {
+            if (!res.ok) throw new Error("구조물 목록 조회 실패 (HTTP " + res.status + ")");
+            return res.body.structures;
+        });
+    }
+
+    /**
+     * @param {string} structureId
+     * @returns {Promise<{structure:object, items:Array}>}
+     */
+    function fetchStockItems(structureId) {
+        return get("/v1/stock/structures/" + encodeURIComponent(structureId) + "/items").then(
+            function (res) {
+                if (!res.ok) throw new Error("재고 조회 실패 (HTTP " + res.status + ")");
+                return res.body;
+            }
+        );
+    }
+
+    /**
+     * @param {string} structureId
+     * @param {number} typeId
+     * @param {number} days
+     * @returns {Promise<{typeId:number, days:number, history:Array}>}
+     */
+    function fetchItemHistory(structureId, typeId, days) {
+        return get(
+            "/v1/stock/structures/" +
+                encodeURIComponent(structureId) +
+                "/items/" +
+                encodeURIComponent(typeId) +
+                "/history?days=" +
+                encodeURIComponent(days)
+        ).then(function (res) {
+            if (!res.ok) throw new Error("이력 조회 실패 (HTTP " + res.status + ")");
+            return res.body;
+        });
+    }
+
+    window.BonsaiApi = {
+        API_BASE: API_BASE,
+        checkAuth: checkAuth,
+        fetchStructures: fetchStructures,
+        fetchStockItems: fetchStockItems,
+        fetchItemHistory: fetchItemHistory,
+    };
+})();
