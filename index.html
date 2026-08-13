@@ -109,18 +109,8 @@
                                     autocomplete="off"
                                 />
                             </label>
-                            <label class="field">
-                                <span class="field__label vh">정렬 기준</span>
-                                <select class="field__input" data-sort>
-                                    <option value="days">소진 예상일</option>
-                                    <option value="ratio">부족률</option>
-                                    <option value="short">부족 수량</option>
-                                    <option value="cost">예상 비용</option>
-                                    <option value="volume">운반 부피</option>
-                                    <option value="density">ISK / m³</option>
-                                    <option value="name">이름</option>
-                                </select>
-                            </label>
+                            <!-- 정렬 기준 선택은 없다 — 표 헤더를 클릭해서 정렬한다(품목/추이/
+                                 충족률/보유·목표/부족/운반부피/ISK per m³/예상비용 전부). -->
                             <button
                                 class="btn btn--ghost btn--dir"
                                 type="button"
@@ -165,27 +155,65 @@
                     <div class="tablewrap">
                         <table class="tbl">
                             <caption class="vh">
-                                행어 재고, 목표 수량, 부족분, 예상 비용
+                                행어 재고, 목표 수량, 부족분, 예상 비용, 운반 부피, ISK per m³. 각 열 제목을 눌러 정렬할 수 있습니다.
                             </caption>
                             <thead>
                                 <tr>
                                     <th class="tbl__pick" scope="col">
                                         <span class="vh">매니페스트 포함</span>
                                     </th>
-                                    <th class="tbl__item" scope="col" colspan="2">품목</th>
-                                    <th class="tbl__spark" scope="col">추이</th>
-                                    <th class="tbl__bar" scope="col">충족률</th>
+                                    <th class="tbl__item" scope="col" colspan="2">
+                                        <button type="button" class="th-sort" data-sort-key="name">
+                                            품목<span class="th-sort__arrow" aria-hidden="true"></span>
+                                        </button>
+                                    </th>
+                                    <th class="tbl__spark" scope="col">
+                                        <button type="button" class="th-sort" data-sort-key="days">
+                                            추이<span class="th-sort__arrow" aria-hidden="true"></span>
+                                        </button>
+                                    </th>
+                                    <th class="tbl__bar" scope="col">
+                                        <button type="button" class="th-sort" data-sort-key="ratio">
+                                            충족률<span class="th-sort__arrow" aria-hidden="true"></span>
+                                        </button>
+                                    </th>
                                     <th class="tbl__n tbl__qty" scope="col">
                                         <!-- inline-flex 래퍼: 스팬 사이 개행이 공백으로 렌더돼
                                              아래 값과 기준선이 어긋나는 것을 막는다. -->
-                                        <span class="qty__h">
-                                            <span class="qty__a">보유</span>
-                                            <span class="qty__slash">/</span>
-                                            <span class="qty__b">목표</span>
-                                        </span>
+                                        <button
+                                            type="button"
+                                            class="th-sort"
+                                            data-sort-key="stocked"
+                                            aria-label="보유/목표 기준 정렬"
+                                        >
+                                            <span class="qty__h">
+                                                <span class="qty__a">보유</span>
+                                                <span class="qty__slash">/</span>
+                                                <span class="qty__b">목표</span>
+                                            </span>
+                                            <span class="th-sort__arrow" aria-hidden="true"></span>
+                                        </button>
                                     </th>
-                                    <th class="tbl__n" scope="col">부족</th>
-                                    <th class="tbl__n tbl__isk" scope="col">예상 비용</th>
+                                    <th class="tbl__n" scope="col">
+                                        <button type="button" class="th-sort" data-sort-key="short">
+                                            부족<span class="th-sort__arrow" aria-hidden="true"></span>
+                                        </button>
+                                    </th>
+                                    <th class="tbl__n tbl__isk" scope="col">
+                                        <button type="button" class="th-sort" data-sort-key="cost">
+                                            예상 비용<span class="th-sort__arrow" aria-hidden="true"></span>
+                                        </button>
+                                    </th>
+                                    <th class="tbl__n" scope="col">
+                                        <button type="button" class="th-sort" data-sort-key="volume">
+                                            운반 부피<span class="th-sort__arrow" aria-hidden="true"></span>
+                                        </button>
+                                    </th>
+                                    <th class="tbl__n" scope="col">
+                                        <button type="button" class="th-sort" data-sort-key="density">
+                                            ISK/m³<span class="th-sort__arrow" aria-hidden="true"></span>
+                                        </button>
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody data-rows></tbody>

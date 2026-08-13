@@ -315,7 +315,7 @@ select.field__input {
 }
 
 .tbl th {
-    padding: 9px 12px;
+    padding: 0;
     border-bottom: 1px solid var(--edge);
     color: var(--dim);
     font: 11px/1.3 var(--mono);
@@ -324,6 +324,44 @@ select.field__input {
     text-transform: uppercase;
     text-align: left;
     white-space: nowrap;
+}
+
+/* 헤더를 눌러서 그 기준으로 정렬한다 — 셀 전체를 버튼으로 채워서 클릭 영역을 넓힌다. */
+.th-sort {
+    all: unset;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    width: 100%;
+    padding: 9px 12px;
+    cursor: pointer;
+    color: inherit;
+    font: inherit;
+    letter-spacing: inherit;
+    text-transform: inherit;
+}
+.tbl th.tbl__n .th-sort {
+    justify-content: flex-end;
+}
+.th-sort:hover {
+    color: var(--frost);
+}
+.th-sort:focus-visible {
+    outline: 2px solid var(--teal);
+    outline-offset: -2px;
+}
+.th-sort__arrow {
+    font-family: var(--sans); /* 모노 폰트의 화살표 글리프가 좁게 나와서 본문 폰트를 쓴다 */
+    font-size: 9px;
+    width: 8px;
+    opacity: 0;
+}
+.th-sort.is-active {
+    color: var(--teal);
+}
+.th-sort.is-active .th-sort__arrow {
+    opacity: 1;
 }
 
 .tbl td {
@@ -1429,6 +1467,7 @@ select.field__input {
         grid-template-areas:
             "pick name  short"
             "pick qty   isk"
+            "pick vol   density"
             "pick bar   bar";
         gap: 4px 10px;
         padding: 11px 12px;
@@ -1470,6 +1509,20 @@ select.field__input {
         grid-area: isk;
         width: auto;
         text-align: right;
+    }
+    .tbl td.tbl__vol {
+        grid-area: vol;
+        width: auto;
+        text-align: left;
+        color: var(--dim);
+        font-size: 11px;
+    }
+    .tbl td.tbl__density {
+        grid-area: density;
+        width: auto;
+        text-align: right;
+        color: var(--dim);
+        font-size: 11px;
     }
     .tbl td.tbl__bar {
         grid-area: bar;
