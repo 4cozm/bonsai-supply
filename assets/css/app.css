@@ -199,8 +199,11 @@ select.field__input {
 
 /* ── 페이지 ────────────────────────────────────────────── */
 
+/* 1440px 캡이 넓은 모니터(1600px+)에서 좌우를 그냥 놀리고 있었다 — 정작 좁은 매니페스트
+   사이드바(320px)는 품목명 열이 아이콘 하나 폭으로 짜부라질 정도였는데, 그 여유를 못
+   끌어다 쓰고 있었던 것. 1600px로 올려 표·매니페스트 둘 다에 실제로 돌아가게 한다. */
 .page {
-    max-width: 1440px;
+    max-width: 1600px;
     margin: 0 auto;
     padding: 32px var(--gut) 72px;
 }
@@ -209,11 +212,13 @@ select.field__input {
 
 .grid {
     display: grid;
-    /* 매니페스트가 표(아이콘·수량·부피·비용)로 바뀌면서 340px 로는 옆으로 슬라이드해야만
-       다 보였다. 320px 로 넓혀 웬만한 품목명은 그대로 들어가게 했다 — 그래도 못 들어가는
-       긴 이름은 .mname 의 ellipsis(호버 시 title로 전체 이름)가 안전망으로 잘라낸다.
-       재고 표 쪽에 폭을 최대한 양보해야 해서 460px 에서 네 번 줄였다. */
-    grid-template-columns: minmax(0, 1fr) 320px;
+    /* 320px까지 줄였다가 실측해보니 품목명 열이 아이콘 폭(20px)보다도 좁아져 이름이
+       아예 안 보였다 — table-layout: fixed에서는 min-width가 열 폭 하한으로 안 먹혀서
+       (고정 열 폭 합이 표 폭을 넘으면 그냥 다 같이 짜부라진다) 매니페스트 자체 폭을
+       360px로 다시 올렸다. 그래도 못 들어가는 긴 이름은 .mname 의 ellipsis(호버 시
+       title로 전체 이름)가 안전망으로 잘라낸다. .page의 max-width를 1600px로 올려
+       넓은 화면에서는 표 쪽이 그만큼 더 가져가게 해서, 표는 여전히 안 좁아진다. */
+    grid-template-columns: minmax(0, 1fr) 360px;
     gap: 10px;
     align-items: start;
     margin-top: 4px;
@@ -766,8 +771,12 @@ select.field__input {
     font-size: 12.5px;
 }
 
+/* min-width 없이 auto만 두면 다른 열(수량·부피·비용·빼기)이 늘 때 이 열이 0까지
+   짜부라질 수 있다 — 아이콘 하나 폭만 남고 이름이 통째로 안 보이던 게 그 경우였다.
+   최소한 아이콘+글자 몇 자는 버티도록 바닥을 깐다. */
 .mtbl__item {
     width: auto;
+    min-width: 70px;
 }
 .mtbl__n {
     width: 70px;
@@ -777,15 +786,15 @@ select.field__input {
    th.tbl__n:nth-child 계열과 같은 패턴으로 th/td 둘 다 잡는다. */
 .mtbl th.mtbl__qty,
 .mtbl td.mtbl__qty {
-    width: 84px;
+    width: 76px;
 }
 .mtbl th.mtbl__n:nth-child(3),
 .mtbl td.mtbl__n:nth-child(3) {
-    width: 84px; /* 부피 열 — " m³" 단위까지 붙어 70px 로는 큰 수(90,000 m³)가 잘렸다 */
+    width: 78px; /* 부피 열 — " m³" 단위까지 붙어 70px 로는 큰 수(90,000 m³)가 잘렸다 */
 }
 .mtbl th.mtbl__n:nth-child(4),
 .mtbl td.mtbl__n:nth-child(4) {
-    width: 82px; /* 비용 열 — 단가 줄까지 있어 조금 더 넓게 */
+    width: 72px; /* 비용 열 — 단가 줄까지 있어 조금 더 넓게 */
 }
 
 .mtbl th {
@@ -826,7 +835,7 @@ select.field__input {
     white-space: nowrap;
 }
 .mtbl__drop {
-    width: 30px;
+    width: 28px;
 }
 /* mdrop 버튼이 20px 인데 표 공통 셀 패딩(10px 씩)까지 더하면 26px 열엔 안 들어간다 —
    이게 실제 4px 오버플로의 원인이었다. 이 열만 패딩을 줄여 버튼을 넉넉히 담는다. */
