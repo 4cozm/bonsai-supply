@@ -110,8 +110,8 @@
                                 />
                             </label>
                             <!-- 정렬 기준 선택은 없다 — 표 헤더를 클릭해서 정렬한다(품목/추이/
-                                 충족률/보유·목표/부족/ISK per m³ 전부). 예상 비용·운반 부피는
-                                 매니페스트에 담은 뒤에만 의미가 있어서 표에는 안 둔다. -->
+                                 충족률/보유·목표/부족/개당 부피/개당 비용 전부). 목표 채우기용
+                                 총액·총부피는 매니페스트에 담은 뒤에만 의미가 있어서 표에는 안 둔다. -->
                             <button
                                 class="btn btn--ghost btn--dir"
                                 type="button"
@@ -156,7 +156,7 @@
                     <div class="tablewrap">
                         <table class="tbl">
                             <caption class="vh">
-                                행어 재고, 목표 수량, 부족분, ISK per m³. 각 열 제목을 눌러 정렬할 수 있습니다.
+                                행어 재고, 목표 수량, 부족분, 개당 부피, 개당 비용. 각 열 제목을 눌러 정렬할 수 있습니다.
                             </caption>
                             <colgroup>
                                 <col class="tbl__pick" />
@@ -166,7 +166,8 @@
                                 <col class="tbl__bar" />
                                 <col class="tbl__qty" />
                                 <col class="tbl__short" />
-                                <col class="tbl__density" />
+                                <col class="tbl__vol" />
+                                <col class="tbl__price" />
                             </colgroup>
                             <thead>
                                 <tr>
@@ -210,9 +211,14 @@
                                             부족<span class="th-sort__arrow" aria-hidden="true"></span>
                                         </button>
                                     </th>
-                                    <th class="tbl__n tbl__density" scope="col">
-                                        <button type="button" class="th-sort" data-sort-key="density">
-                                            ISK/m³<span class="th-sort__arrow" aria-hidden="true"></span>
+                                    <th class="tbl__n tbl__vol" scope="col">
+                                        <button type="button" class="th-sort" data-sort-key="volume">
+                                            개당 부피<span class="th-sort__arrow" aria-hidden="true"></span>
+                                        </button>
+                                    </th>
+                                    <th class="tbl__n tbl__price" scope="col">
+                                        <button type="button" class="th-sort" data-sort-key="price">
+                                            개당 비용<span class="th-sort__arrow" aria-hidden="true"></span>
                                         </button>
                                     </th>
                                 </tr>

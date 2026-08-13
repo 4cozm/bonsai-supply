@@ -440,8 +440,11 @@ select.field__input {
 .tbl__short {
     width: 88px;
 }
-/* isk()는 100만 미만이면 약어 없이 "999,999 isk/m³"로 나와 이 구간이 제일 넓다. */
-.tbl__density {
+.tbl__vol {
+    width: 90px;
+}
+/* isk()는 100만 미만이면 약어 없이 "999,999 isk/개"로 나와 이 구간이 제일 넓다. */
+.tbl__price {
     width: 124px;
 }
 
@@ -1503,9 +1506,10 @@ select.field__input {
         display: grid;
         grid-template-columns: 20px minmax(0, 1fr) auto;
         grid-template-areas:
-            "pick name    short"
-            "pick qty     density"
-            "pick bar     bar";
+            "pick name  short"
+            "pick qty   vol"
+            "pick price price"
+            "pick bar   bar";
         gap: 4px 10px;
         padding: 11px 12px;
         border-bottom: 1px solid var(--plate);
@@ -1542,8 +1546,15 @@ select.field__input {
         grid-area: qty;
         text-align: left;
     }
-    .tbl td.tbl__density {
-        grid-area: density;
+    .tbl td.tbl__vol {
+        grid-area: vol;
+        width: auto;
+        text-align: right;
+        color: var(--dim);
+        font-size: 11px;
+    }
+    .tbl td.tbl__price {
+        grid-area: price;
         width: auto;
         text-align: right;
         color: var(--dim);
