@@ -58,6 +58,7 @@
     var el = {
         authgate: document.querySelector("[data-authgate]"),
         authgateMsg: document.querySelector("[data-authgate-msg]"),
+        tablewrap: document.querySelector(".tablewrap"),
         rows: document.querySelector("[data-rows]"),
         empty: document.querySelector("[data-empty]"),
         manifestRows: document.querySelector("[data-manifest-rows]"),
@@ -418,6 +419,8 @@
             })
             .then(function (items) {
                 state.items = items;
+                // 완전히 새 목록이라 이전 스크롤 위치가 의미가 없다 — 위로 되돌린다.
+                if (el.tablewrap) el.tablewrap.scrollTop = 0;
                 render();
                 toast("조회 성공");
             })
@@ -1356,6 +1359,7 @@
         name.type = "button";
         name.className = "name";
         name.textContent = item.name;
+        name.title = item.name; // 가상 스크롤 행 높이를 고정하려고 한 줄로 자르니, 전체 이름은 호버로.
         name.addEventListener("click", function () {
             openDetail(item);
         });
@@ -1412,13 +1416,15 @@
         var shortMain = document.createElement("span");
         shortMain.textContent = short ? "−" + num(short) : hasNoTarget(item) ? "목표없음" : "충족";
         tdShort.appendChild(shortMain);
+        // 가상 스크롤이 행 높이를 고정값으로 가정하므로, 소진 예상일이 없는 행도
+        // 빈 줄을 그대로 둔다(항상 2줄) — isk__unit과 같은 이유로 조건부 append를 뺐다.
         var left = daysLeft(item);
-        if (isFinite(left)) {
-            var runOut = document.createElement("span");
-            runOut.className = "runout" + (left <= 3 ? " is-soon" : "");
-            runOut.textContent = (left < 10 ? Math.round(left * 10) / 10 : Math.round(left)) + "일 남음";
-            tdShort.appendChild(runOut);
-        }
+        var runOut = document.createElement("span");
+        runOut.className = "runout" + (isFinite(left) && left <= 3 ? " is-soon" : "");
+        runOut.textContent = isFinite(left)
+            ? (left < 10 ? Math.round(left * 10) / 10 : Math.round(left)) + "일 남음"
+            : "";
+        tdShort.appendChild(runOut);
         tr.appendChild(tdShort);
 
         // 예상 비용 + 단가
@@ -1575,11 +1581,76 @@
         el.copy.disabled = lines === 0;
     }
 
-    /* ── 렌더 ───────────────────────────────────────────── */
+    /* ── 렌더: 가상 스크롤 ──────────────────────────────── */
 
-    function render() {
+    // .tbl tbody tr.row 의 CSS height(52px)와 반드시 일치해야 한다 — 어긋나면
+    // 스크롤할수록 렌더된 구간과 실제 스크롤 위치가 밀린다.
+    var ROW_H = 52;
+    // <colgroup>의 <col> 개수(pick·ico·item·spark·bar·qty·short·isk·vol·density)와 같아야
+    // spacer 행의 colspan이 표 전체 폭을 정확히 덮는다.
+    var TBL_COLS = 10;
+    // 스크롤이 튀는 순간에도 빈 틈이 먼저 보이지 않게, 화면 위아래로 더 그려 두는 여유 행 수.
+    var ROW_BUFFER = 8;
+
+    function spacerRow(height) {
+        var tr = document.createElement("tr");
+        tr.className = "row-spacer";
+        tr.setAttribute("aria-hidden", "true");
+        tr.style.height = height + "px";
+        var td = document.createElement("td");
+        td.colSpan = TBL_COLS;
+        td.style.padding = "0";
+        td.style.border = "0";
+        tr.appendChild(td);
+        return tr;
+    }
+
+    // app.css 의 "@media (max-width: 640px)" 카드 레이아웃 분기점과 반드시 같아야 한다.
+    var MOBILE_MQ = window.matchMedia("(max-width: 640px)");
+    // 회전·창 크기 조절로 이 경계를 넘나들면 가상 스크롤 on/off 를 다시 판단해야 한다.
+    MOBILE_MQ.addEventListener("change", function () {
+        render();
+    });
+
+    /**
+     * 몇백~몇천 개짜리 목록이어도 실제로 DOM에 만드는 <tr>은 화면에 보이는
+     * 구간(+버퍼)뿐이다 — 나머지는 위/아래 spacer 행 하나씩으로 높이만 채운다.
+     * 정렬·검색·필터가 바뀌어도 이 함수만 다시 부르면 되므로, 예전에 있던
+     * "이미 만든 행을 재사용해 옮기기만 하는" resortRows() 같은 별도 최적화 경로가
+     * 더는 필요 없다 — 어차피 매번 화면에 보이는 몇십 행만 새로 만들기 때문이다.
+     *
+     * 모바일 폭에서는 표가 카드로 접히면서 품목명 줄바꿈 등으로 행 높이가 들쭉날쭉해져
+     * ROW_H 고정 가정이 깨진다. 그 폭에서는 가상 스크롤을 접고 예전처럼 전부 그린다 —
+     * 손 안 화면에서 수백~수천 개를 오래 스크롤하는 경우는 드물다고 보고 단순한 쪽을 택했다.
+     */
+    function renderWindow() {
         var items = visibleItems();
 
+        if (MOBILE_MQ.matches) {
+            el.rows.textContent = "";
+            items.forEach(function (item, i) {
+                el.rows.appendChild(buildRow(item, i));
+            });
+            return items;
+        }
+
+        var viewportH = el.tablewrap.clientHeight || 0;
+        var scrollTop = el.tablewrap.scrollTop || 0;
+        var start = Math.max(0, Math.floor(scrollTop / ROW_H) - ROW_BUFFER);
+        var count = Math.ceil(viewportH / ROW_H) + ROW_BUFFER * 2;
+        var end = Math.min(items.length, start + count);
+
+        el.rows.textContent = "";
+        if (start > 0) el.rows.appendChild(spacerRow(start * ROW_H));
+        for (var i = start; i < end; i++) {
+            el.rows.appendChild(buildRow(items[i], i));
+        }
+        if (end < items.length) el.rows.appendChild(spacerRow((items.length - end) * ROW_H));
+
+        return items;
+    }
+
+    function render() {
         el.priceSource.textContent = state.priceSource;
         // 조회 실패/근사값은 캡션 텍스트만으로는 눈에 안 띄니 톤을 바꿔 잡아 준다 — 시세는
         // 계속 바뀌는 값이라 "지금 값이 실시간이 아니다"는 사실이 조용히 묻히면 안 된다.
@@ -1587,10 +1658,7 @@
         el.priceNote.classList.toggle("is-warn", !state.priceOk);
         el.priceNote.classList.toggle("is-approx", state.priceOk && state.priceApprox);
 
-        el.rows.textContent = "";
-        items.forEach(function (item, i) {
-            el.rows.appendChild(buildRow(item, i));
-        });
+        var items = renderWindow();
 
         if (items.length === 0) {
             el.empty.hidden = false;
@@ -1606,46 +1674,6 @@
         renderManifest();
         renderPending();
         state.firstPaint = false;
-    }
-
-    /**
-     * 정렬 기준/방향만 바뀌었을 때 쓴다 — render()처럼 행을 통째로 새로 만들지
-     * 않고 이미 만들어진 <tr>(스파크라인 SVG, 호버 리스너 포함)을 그대로 옮겨서
-     * 순서만 바꾼다. 몇백 개짜리 표에서 정렬을 누를 때마다 SVG를 전부 다시
-     * 그리던 게 체감 지연의 진짜 원인이었다 — 실제 정렬 계산(Array.sort) 자체는
-     * 몇백 개 기준으로도 무시할 만한 시간이다.
-     *
-     * 안전하게 재사용할 수 있는 경우(지금 화면에 있는 행 집합과 새로 계산한
-     * 목록이 정확히 같은 경우)에만 이 경로를 타고, 아니면 그냥 render()로
-     * 넘긴다 — 필터/검색/새 데이터 로드처럼 행 집합 자체가 바뀌는 경우는
-     * 애초에 이 함수를 안 부른다(정렬 버튼들만 호출).
-     */
-    function resortRows() {
-        var items = visibleItems();
-        var current = el.rows.children;
-
-        if (current.length !== items.length) {
-            render();
-            return;
-        }
-
-        var byKey = new Map();
-        for (var i = 0; i < current.length; i++) {
-            byKey.set(current[i].__item.key, current[i]);
-        }
-
-        var frag = document.createDocumentFragment();
-        for (var j = 0; j < items.length; j++) {
-            var tr = byKey.get(items[j].key);
-            if (!tr) {
-                render(); // 못 찾으면(안전망) 전체를 새로 그린다.
-                return;
-            }
-            frag.appendChild(tr); // 이미 DOM에 붙어있는 노드를 옮기는 것 — 리스너가 그대로 유지된다.
-        }
-        el.rows.appendChild(frag);
-
-        renderPending();
     }
 
     /* ── 저장 확인 모달 ─────────────────────────────────── */
@@ -2172,12 +2200,14 @@
                 b.classList.toggle("is-on", b === btn);
                 b.setAttribute("aria-pressed", String(b === btn));
             });
+            el.tablewrap.scrollTop = 0; // 목록 구성 자체가 바뀌니 위로 되돌린다.
             render();
         });
     });
 
     el.query.addEventListener("input", function () {
         state.query = el.query.value;
+        el.tablewrap.scrollTop = 0;
         render();
     });
 
@@ -2219,7 +2249,7 @@
             state.sort.asc = ASC_DEFAULT_SORT_KEYS.indexOf(key) !== -1;
         }
         renderSortDir();
-        resortRows();
+        render();
     }
 
     document.querySelectorAll("[data-sort-key]").forEach(function (btn) {
@@ -2231,7 +2261,18 @@
     el.sortDir.addEventListener("click", function () {
         state.sort.asc = !state.sort.asc;
         renderSortDir();
-        resortRows();
+        render();
+    });
+
+    // 가상 스크롤: 스크롤 위치가 바뀔 때마다 화면에 보이는 구간만 다시 그린다.
+    // rAF로 묶어서 빠르게 휠을 굴려도 프레임당 한 번만 다시 그리게 한다.
+    var scrollFrame = null;
+    el.tablewrap.addEventListener("scroll", function () {
+        if (scrollFrame) return;
+        scrollFrame = requestAnimationFrame(function () {
+            scrollFrame = null;
+            renderWindow();
+        });
     });
 
     el.copy.addEventListener("click", copyManifest);

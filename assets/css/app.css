@@ -303,10 +303,15 @@ select.field__input {
     box-shadow: inset 0 -2px 0 var(--teal);
 }
 
+/* 가상 스크롤 뷰포트 — 몇백~몇천 행을 다 DOM에 두는 대신, 여기서 스크롤되는
+   구간만큼만 실제로 그린다(app.js renderWindow 참고). 높이를 안 잡으면 가상
+   스크롤을 걸 스크롤 컨테이너 자체가 없다. */
 .tablewrap {
     border: 1px solid var(--edge);
     background: var(--hull);
     overflow-x: auto;
+    overflow-y: auto;
+    max-height: 70vh;
 }
 
 /* table-layout: fixed — auto 레이아웃은 정렬로 행 순서만 바뀌어도 모든 셀 내용을
@@ -322,7 +327,11 @@ select.field__input {
 }
 
 .tbl th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
     padding: 0;
+    background: var(--hull);
     border-bottom: 1px solid var(--edge);
     color: var(--dim);
     font: 11px/1.3 var(--mono);
@@ -375,6 +384,14 @@ select.field__input {
     padding: 8px 9px;
     border-bottom: 1px solid var(--plate);
     vertical-align: middle;
+    overflow: hidden;
+}
+/* 가상 스크롤이 "행 하나 = N px"로 위치를 계산하니 실제 렌더 높이와 반드시 맞아야
+   한다 — app.js 의 ROW_H 상수와 이 값이 어긋나면 스크롤할수록 밀린다. 폰트 로딩
+   타이밍이나 서브픽셀 반올림으로 실측치가 흔들려도 어긋나지 않도록, td에 overflow:
+   hidden을 걸어 이 높이를 소프트 최소값이 아니라 진짜 상한으로 만든다. */
+.tbl tbody tr.row {
+    height: 52px;
 }
 .tbl tbody tr:last-child td {
     border-bottom: 0;
@@ -457,8 +474,12 @@ select.field__input {
 
 /* 행 어디를 눌러도 상세가 열린다. 품목명은 버튼으로 남겨 뒀는데, 행 클릭은 마우스 전용이라
    키보드 사용자에게는 이게 유일한 진입점이기 때문이다. */
+/* 가상 스크롤이 행 높이를 고정값으로 계산하므로 한 줄로 못박는다 — 못 들어가는
+   이름은 ellipsis 로 자르고, title 속성(호버 툴팁)으로 전체를 보여준다. */
 .name {
     display: block;
+    overflow: hidden;
+    max-width: 100%;
     padding: 0;
     border: 0;
     background: none;
@@ -466,6 +487,8 @@ select.field__input {
     font-size: 13px;
     color: var(--frost);
     text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     cursor: pointer;
 }
 .tbl tbody tr.row:hover .name {
