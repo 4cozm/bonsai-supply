@@ -103,7 +103,10 @@
                         missing++;
                         return;
                     }
-                    prices[item.name] = p;
+                    // item.name이 아니라 item.key(typeId+커스텀명 조합) — 함선처럼 다른
+                    // typeId인데 게임 내 커스텀명이 우연히 같은 경우(app.js 참고) name만
+                    // 쓰면 서로 다른 두 품목의 가격이 한 자리에서 덮어써진다.
+                    prices[item.key] = p;
                 });
 
                 return {
@@ -147,11 +150,14 @@
             });
         }
 
-        // typeId 는 중복될 수 없지만, 같은 typeId 를 가리키는 로컬 품목이 두 개면(이론상)
-        // 응답 하나를 여러 이름에 매핑해야 하므로 typeId → 이름 배열로 모아 둔다.
+        // typeId 는 중복될 수 없지만, 같은 typeId 를 가리키는 로컬 품목이 여러 개일 수
+        // 있다(함선처럼 커스텀명으로 나뉜 행들 — app.js 참고) — 응답 하나를 그 typeId의
+        // 모든 행(item.key)에 매핑해야 하므로 typeId → key 배열로 모아 둔다. name이
+        // 아니라 key를 쓰는 이유: 다른 typeId인데 커스텀명이 우연히 같으면 name으로는
+        // 두 품목이 하나로 뭉개진다.
         var namesByType = {};
         priced.forEach(function (item) {
-            (namesByType[item.typeId] = namesByType[item.typeId] || []).push(item.name);
+            (namesByType[item.typeId] = namesByType[item.typeId] || []).push(item.key);
         });
         var typeIds = Object.keys(namesByType);
         var batches = chunk(typeIds, TYPES_PER_REQUEST);
@@ -181,8 +187,8 @@
                     noQuote++; // 매도 호가가 없는(비유동적인) 품목 — 값을 지어내지 않는다
                     return;
                 }
-                namesByType[id].forEach(function (name) {
-                    prices[name] = p;
+                namesByType[id].forEach(function (key) {
+                    prices[key] = p;
                 });
             });
 
@@ -203,11 +209,14 @@
         DEFAULT_HUB_ID: DEFAULT_HUB.id,
 
         /**
-         * @param {Array<{name: string, typeId: number, unitVolume: number}>} items
+         * @param {Array<{key: string, typeId: number, unitVolume: number}>} items
          * @param {number} [hubId] 4대 상권 station id. 생략하면 지타.
          * @returns {Promise<{source: string, ok: boolean, approx: boolean, pricedAt: Date|null, unitPrices: Record<string, number>}>}
-         *          unitPrices 는 품목명 → 개당 ISK. 값을 모르는 품목은 키가 아예 없다
-         *          (0 이 아니다) — 화면은 이를 "—" 로 보여 준다.
+         *          unitPrices 는 item.key(typeId+커스텀명 조합) → 개당 ISK다 — 이름(name)이
+         *          아니다. 함선처럼 다른 typeId가 같은 커스텀명을 쓸 수 있어서, name으로
+         *          키를 잡으면 서로 다른 두 품목의 가격이 한 자리에서 덮어써진다(app.js의
+         *          itemKey() 참고). 값을 모르는 품목은 키가 아예 없다(0이 아니다) —
+         *          화면은 이를 "—" 로 보여 준다.
          *          approx 가 true 면 실시간 매도가가 아니라 ESI 평균값 폴백이 쓰였다는
          *          뜻이다(이 폴백은 상권을 구분하지 않는다) — app.js 가 이걸로 단가
          *          표시에 물결표를 붙인다.

@@ -202,7 +202,7 @@
     }
 
     function included(item) {
-        return isShort(item) && state.included.has(item.name);
+        return isShort(item) && state.included.has(item.key);
     }
 
     // 목표가 없으면(또는 0으로 꺼져 있으면) 비율 자체가 의미 없다 — null로 반환해서
@@ -240,7 +240,7 @@
      */
     function manifestQtyOf(item) {
         var max = deficit(item);
-        var override = state.manifestQty[item.name];
+        var override = state.manifestQty[item.key];
         if (override == null) return max;
         return Math.max(0, Math.min(max, override));
     }
@@ -250,8 +250,8 @@
         var clamped = Math.max(0, Math.min(max, isNaN(qty) ? 0 : Math.round(qty)));
         // 기본값과 같아지면 오버라이드를 지운다 — 나중에 목표가 바뀌어도 "전체"를 계속
         // 따라가게 하려는 것이다. 숫자를 박아 두면 그 순간의 부족분에 고정되어 버린다.
-        if (clamped === max) delete state.manifestQty[item.name];
-        else state.manifestQty[item.name] = clamped;
+        if (clamped === max) delete state.manifestQty[item.key];
+        else state.manifestQty[item.key] = clamped;
     }
 
     function manifestLineVolume(item) {
@@ -263,7 +263,7 @@
     }
 
     function unitPrice(item) {
-        return state.unitPrices[item.name] || 0;
+        return state.unitPrices[item.key] || 0;
     }
 
     function lineCost(item) {
@@ -364,6 +364,12 @@
                     // 다른 이름으로 구분해서 보여주는 게 목적). group/unitVolume은 이름과
                     // 무관하게 typeId로만 정해진다.
                     itemName: raw.itemName || null,
+                    // state.baseTarget/manifestQty/included/unitPrices 는 전부 이 key로
+                    // 찾는다 — name이 아니다. 서로 다른 typeId의 함선 두 대가 커스텀명을
+                    // 우연히 똑같이 지으면(예: 둘 다 "Bait") name만으로는 구분이 안 돼서
+                    // 목표 편집·매니페스트 포함·단가가 서로 새 버린다. typeId를 같이
+                    // 섞어야 항상 유일하다.
+                    key: raw.typeId + "::" + (raw.itemName || ""),
                     name: raw.itemName || info.name || "이름 미확인 (typeId " + raw.typeId + ")",
                     group: info.group || "",
                     unitVolume: info.unitVolume || 0,
@@ -740,21 +746,21 @@
      * "이건 아직 서버에 없는 값"이라는 것도 드러나야 하기 때문이다.
      */
     function setTarget(item, next) {
-        if (!(item.name in state.baseTarget)) state.baseTarget[item.name] = item.target;
+        if (!(item.key in state.baseTarget)) state.baseTarget[item.key] = item.target;
         item.target = next;
         // 원래 값으로 되돌아왔으면 변경이 아니다.
-        if (state.baseTarget[item.name] === next) delete state.baseTarget[item.name];
+        if (state.baseTarget[item.key] === next) delete state.baseTarget[item.key];
     }
 
     function isDirty(item) {
-        return item.name in state.baseTarget;
+        return item.key in state.baseTarget;
     }
 
     function pendingChanges() {
         return state.items
             .filter(isDirty)
             .map(function (item) {
-                return { item: item, from: state.baseTarget[item.name], to: item.target };
+                return { item: item, from: state.baseTarget[item.key], to: item.target };
             });
     }
 
@@ -766,7 +772,7 @@
 
     function resetTargets() {
         state.items.forEach(function (item) {
-            if (isDirty(item)) item.target = state.baseTarget[item.name];
+            if (isDirty(item)) item.target = state.baseTarget[item.key];
         });
         state.baseTarget = {};
         render();
@@ -797,12 +803,12 @@
         if (included(item) === on) return false;
 
         if (on) {
-            state.included.add(item.name);
+            state.included.add(item.key);
         } else {
-            state.included.delete(item.name);
+            state.included.delete(item.key);
             // 다시 체크하면 항상 그 시점의 전체 부족분에서 시작한다 — 예전에 줄여 뒀던
             // 수량을 기억해 뒀다가 불쑥 되돌리면 놀란다.
-            delete state.manifestQty[item.name];
+            delete state.manifestQty[item.key];
         }
 
         var tr = rowFor(item);
@@ -1603,28 +1609,51 @@
         saveModal.root.showModal();
     }
 
+    /**
+     * Promise.all이 아니라 allSettled를 쓴다 — 여러 건을 한 번에 저장할 때 하나가
+     * 실패했다고 이미 서버에 반영된 나머지까지 "저장 안 됨" 상태로 묶어 두면 안 된다
+     * (묶어 두면 "되돌리기"를 눌렀을 때 이미 저장된 값까지 로컬에서 옛날 값으로
+     * 되돌아가 버려서 서버와 어긋난다). 성공한 것만 baseTarget에서 지우고, 실패한
+     * 것만 dirty 상태로 남겨서 다시 저장할 수 있게 한다.
+     */
     function commitTargets() {
         var changes = pendingChanges();
-        Promise.all(
+        Promise.allSettled(
             changes.map(function (c) {
                 return window.BonsaiApi.saveTarget(state.structureId, {
                     typeId: c.item.typeId,
                     itemName: c.item.itemName,
                     targetQty: c.to,
+                }).then(function () {
+                    return c;
                 });
             })
-        )
-            .then(function () {
-                state.baseTarget = {};
-                saveModal.root.close();
-                render();
-                toast(num(changes.length) + "건을 저장했습니다.");
-            })
-            .catch(function () {
-                // state.baseTarget을 그대로 둔다 — "저장 안 된 변경"이 안 사라져야
-                // 사용자가 다시 저장을 시도할 수 있다.
-                toast("저장 중 오류가 발생했습니다. 다시 시도해주세요.", "warn");
+        ).then(function (results) {
+            var succeeded = 0;
+            var failed = 0;
+            results.forEach(function (r) {
+                if (r.status === "fulfilled") {
+                    delete state.baseTarget[r.value.item.key];
+                    succeeded++;
+                } else {
+                    failed++;
+                }
             });
+
+            saveModal.root.close();
+            render();
+
+            if (failed === 0) {
+                toast(num(succeeded) + "건을 저장했습니다.");
+            } else if (succeeded === 0) {
+                toast("저장 중 오류가 발생했습니다. 다시 시도해주세요.", "warn");
+            } else {
+                toast(
+                    num(succeeded) + "건 저장, " + num(failed) + "건 실패 — 실패한 항목은 다시 저장해주세요.",
+                    "warn"
+                );
+            }
+        });
     }
 
     /* ── 품목 추가 모달 ─────────────────────────────────── */
