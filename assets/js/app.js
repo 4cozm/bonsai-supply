@@ -1418,10 +1418,14 @@
         tdShort.appendChild(shortMain);
         // 가상 스크롤이 행 높이를 고정값으로 가정하므로, 소진 예상일이 없는 행도
         // 빈 줄을 그대로 둔다(항상 2줄) — isk__unit과 같은 이유로 조건부 append를 뺐다.
+        // 목표가 없으면 애초에 추적 중이 아니라는 뜻이라, 소진 예측은 관리 대상이
+        // 아닌 아이템에 대한 불필요한 정보다 — daysLeft 자체는 target과 무관하게
+        // 소비 추세만 보고 계산되므로 여기서 따로 걸러야 한다.
         var left = daysLeft(item);
+        var showRunout = isFinite(left) && !hasNoTarget(item);
         var runOut = document.createElement("span");
-        runOut.className = "runout" + (isFinite(left) && left <= 3 ? " is-soon" : "");
-        runOut.textContent = isFinite(left)
+        runOut.className = "runout" + (showRunout && left <= 3 ? " is-soon" : "");
+        runOut.textContent = showRunout
             ? (left < 10 ? Math.round(left * 10) / 10 : Math.round(left)) + "일 남음"
             : "";
         tdShort.appendChild(runOut);
