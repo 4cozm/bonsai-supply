@@ -94,10 +94,10 @@ body {
 }
 
 .rail__mark {
-    width: 10px;
-    height: 10px;
-    border: 1px solid var(--teal);
-    border-left-width: 3px;
+    width: 22px;
+    height: 22px;
+    border: 1px solid var(--edge);
+    object-fit: cover;
     flex: none;
 }
 
@@ -309,8 +309,14 @@ select.field__input {
     overflow-x: auto;
 }
 
+/* table-layout: fixed — auto 레이아웃은 정렬로 행 순서만 바뀌어도 모든 셀 내용을
+   다시 재보고 열 폭을 계산한다(수백 행 기준 렌더링 코스트의 실제 원인이었다).
+   고정 레이아웃은 <colgroup> 폭만 보고 계산해서, 행을 옮기는 resortRows() 가
+   진짜로 가벼워진다 — 대신 열 폭이 하드캡이라 아래 폭들은 실측 최악값 기준으로
+   여유를 두고 잡았다(품목명 열만 나머지 공간을 가져가는 유일한 가변 열). */
 .tbl {
     width: 100%;
+    table-layout: fixed;
     border-collapse: collapse;
     font-size: 13px;
 }
@@ -389,24 +395,37 @@ select.field__input {
 .tbl__pick {
     width: 34px;
 }
-/* 고정폭 열이 많아서, 이름이 먼저 쥐어짜인다. 바닥을 깔아 3줄로 쪼개지지 않게 한다. */
+.tbl__ico {
+    width: 52px;
+}
+/* 고정폭 열이 많아서, 이름이 먼저 쥐어짜인다. 바닥을 깔아 3줄로 쪼개지지 않게 한다.
+   table-layout: fixed 아래에서 폭을 안 준 유일한 열이라 나머지 공간을 전부 가져간다. */
 .tbl__item {
     min-width: 176px;
 }
 .tbl__bar {
-    width: 72px;
+    width: 64px;
 }
 .tbl__spark {
-    width: 92px;
+    width: 116px;
 }
+/* 보유/목표 — qty__a(58) + slash(12) + target(62) + 좌우 패딩(18) */
+.tbl__qty {
+    width: 164px;
+}
+/* "−999,999" + 그 아래 줄 "999.9일 남음" 중 넓은 쪽 기준. */
+.tbl__short {
+    width: 88px;
+}
+/* isk()는 100만 미만이면 약어 없이 "999,999 isk"로 나와 이 구간이 제일 넓다. */
 .tbl__isk {
-    width: 96px;
+    width: 122px;
 }
 .tbl__vol {
-    width: 80px;
+    width: 90px;
 }
 .tbl__density {
-    width: 92px;
+    width: 132px;
 }
 
 /* 체크박스 — 라운드 없음, 앰버 채움 */
