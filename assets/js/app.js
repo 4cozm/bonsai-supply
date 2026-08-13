@@ -1,8 +1,11 @@
 /**
  * Bonsai Supply — 행어 재고 콘솔 (프론트 셸)
  *
- * 데이터는 window.BONSAI_MOCK, 시세는 window.BonsaiPricing 에서 온다.
- * API 연결 시 loadItems() 와 pricing.js 의 provider 두 곳만 바꾸면 된다.
+ * 재고 데이터는 window.BonsaiApi(bonsai-bot-v2 REST API, 세션 쿠키 인증),
+ * typeId→이름/그룹/부피 해석은 window.BonsaiEveTypes(공개 ESI 직접 호출),
+ * 시세는 window.BonsaiPricing 에서 온다. 로그인은 폼이 아니라 Discord /보급
+ * 명령이 발급하는 매직링크로만 하고, 세션이 없으면 인증 오버레이만 띄우고
+ * 데이터 요청 자체를 안 한다(init() 참고).
  */
 (function () {
     "use strict";
@@ -42,12 +45,17 @@
         baseTarget: {}, // 저장 전 원래 목표 수량. 키가 있으면 곧 "변경됨"이다.
         sort: { key: "days", asc: true },
         sampledAt: Date.now(),
-        sampleMs: 10 * 60 * 1000,
-        sparkPoints: 144, // 표의 스파크라인이 그리는 표본 수 (24시간 / 10분)
+        // ESI 콥 자산 엔드포인트가 최대 1시간 캐시라(실측 확인됨), 동기화 크론도
+        // 매시 정각으로 돈다 — 목업 시절 10분 가정은 실제 백엔드와 안 맞는다.
+        sampleMs: 60 * 60 * 1000,
+        sparkPoints: 24, // 표의 스파크라인이 그리는 표본 수 (GET /items의 recentHistory 길이와 맞춤)
+        structureId: null, // fetchStructures() 결과의 첫 번째(또는 선택한) 구조물
         firstPaint: true,
     };
 
     var el = {
+        authgate: document.querySelector("[data-authgate]"),
+        authgateMsg: document.querySelector("[data-authgate-msg]"),
         rows: document.querySelector("[data-rows]"),
         empty: document.querySelector("[data-empty]"),
         manifestRows: document.querySelector("[data-manifest-rows]"),
@@ -173,35 +181,17 @@
         return item.target > 0 ? item.stocked / item.target : 1;
     }
 
-    var BURN_WINDOW_DAYS = 30;
-
     /**
-     * 최근 소비 속도(개/일).
+     * 이 속도면 며칠 뒤 바닥나는가. 소비가 없으면 Infinity.
      *
-     * 감소분만 더한다 — 보급이 들어온 계단은 소비가 아니므로 빼고 세야 실제 소진 속도가 나온다.
-     * 창은 30일. 7일로 뒀더니 실제 보급 주기(며칠~십여 일 간격)보다 짧아서, 마침 보급
-     * 직후에 보면 최근 7일이 거의 안 줄어든 것처럼 보여 소진 예상일이 실제보다 훨씬
-     * 여유 있게 나오는 문제가 있었다. 30일이면 보급 주기 한두 바퀴가 창 안에 들어와
-     * 안정적이다.
+     * 계산 자체(최근 30일 감소분 기준 소비 속도)는 백엔드(GET /items의 daysLeft
+     * 필드)로 옮겼다 — 그 계산엔 30일치 원본 이력이 필요한데, 프론트가 아이템마다
+     * 그걸 다 받아 오는 것보다 서버가 숫자 하나만 내려주는 게 훨씬 가볍다. 여기선
+     * null(=API가 "소비 없음"으로 판정)을 프론트 전역에서 계속 써 온 Infinity로
+     * 바꿔주기만 한다 — 그래야 정렬·표시 쪽 기존 코드를 안 건드려도 된다.
      */
-    function burnRate(item) {
-        var h = item.history || [];
-        if (h.length < 2) return 0;
-        var perDay = (24 * 60 * 60 * 1000) / state.sampleMs;
-        var from = Math.max(0, h.length - Math.round(perDay * BURN_WINDOW_DAYS));
-        var drop = 0;
-        for (var i = from + 1; i < h.length; i++) {
-            if (h[i] < h[i - 1]) drop += h[i - 1] - h[i];
-        }
-        var days = (h.length - 1 - from) / perDay;
-        return days > 0 ? drop / days : 0;
-    }
-
-    /** 이 속도면 며칠 뒤 바닥나는가. 소비가 없으면 Infinity. */
     function daysLeft(item) {
-        var rate = burnRate(item);
-        if (rate <= 0) return Infinity;
-        return item.stocked / rate;
+        return item.daysLeft == null ? Infinity : item.daysLeft;
     }
 
     /** 부피당 가치 — 한 번에 다 못 실을 때 무엇을 먼저 싣느냐를 가른다. */
@@ -255,35 +245,82 @@
 
     /* ── 데이터 적재 ─────────────────────────────────────── */
 
-    function loadItems() {
-        // API 연결 시 이 함수만 fetch("/api/stock") 로 교체한다.
-        var mock = window.BONSAI_MOCK || { items: [] };
-        if (el.sync && mock.syncedAt) el.sync.textContent = mock.syncedAt;
-        if (mock.sampleMinutes) {
-            state.sampleMs = mock.sampleMinutes * 60 * 1000;
-            if (el.sampleMinutes) el.sampleMinutes.textContent = String(mock.sampleMinutes);
-        }
-        if (mock.sparkHours) {
-            state.sparkPoints = Math.round((mock.sparkHours * 60) / (mock.sampleMinutes || 10));
-            if (el.historyWindow) el.historyWindow.textContent = String(mock.sparkHours);
-        }
-        if (mock.sampledAt) state.sampledAt = new Date(mock.sampledAt).getTime();
-        if (el.hangar && mock.hangar) {
-            for (var i = 0; i < el.hangar.options.length; i++) {
-                if (el.hangar.options[i].text === mock.hangar) el.hangar.selectedIndex = i;
-            }
-        }
-        return (mock.items || []).map(function (raw) {
-            return {
-                typeId: raw.typeId,
-                name: raw.name,
-                group: raw.group,
-                stocked: raw.stocked,
-                target: raw.target,
-                unitVolume: raw.unitVolume,
-                history: raw.history || [],
-            };
+    function relativeSyncLabel(iso) {
+        if (!iso) return "동기화 기록 없음";
+        var diffMin = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+        if (diffMin < 1) return "방금 동기화";
+        if (diffMin < 60) return diffMin + "분 전 동기화";
+        return Math.round(diffMin / 60) + "시간 전 동기화";
+    }
+
+    function setupHangarSelect(structures) {
+        if (!el.hangar) return;
+        el.hangar.textContent = "";
+        structures.forEach(function (s) {
+            var opt = document.createElement("option");
+            opt.value = s.structureId;
+            opt.textContent = s.displayName;
+            el.hangar.appendChild(opt);
         });
+        el.hangar.value = state.structureId || structures[0].structureId;
+    }
+
+    /**
+     * typeId만 있는 원본 아이템에 이름/그룹/부피를 붙인다. typeId→표시정보 해석은
+     * 일부러 백엔드가 아니라 여기서 한다(파일 위 설명 참고). 해석 실패한 typeId는
+     * 가짜 이름을 채우지 않고 "이름 미확인"으로 남긴다(pricing.js와 같은 원칙).
+     */
+    function attachTypeInfo(rawItems) {
+        var typeIds = rawItems.map(function (r) {
+            return r.typeId;
+        });
+        return window.BonsaiEveTypes.resolveTypes(typeIds).then(function (typeInfo) {
+            return rawItems.map(function (raw) {
+                var info = typeInfo[raw.typeId] || {};
+                return {
+                    typeId: raw.typeId,
+                    name: info.name || "이름 미확인 (typeId " + raw.typeId + ")",
+                    group: info.group || "",
+                    unitVolume: info.unitVolume || 0,
+                    stocked: raw.stocked,
+                    target: raw.target,
+                    daysLeft: raw.daysLeft,
+                    // recentHistory는 {sampledAt, quantity} 쌍으로 온다. 스파크라인은
+                    // 아직 "고정 간격 숫자 배열"을 가정하는 구조라 값만 뽑아 쓴다 —
+                    // 시각 정보가 필요한 모달 전체 이력은 별도로 on-demand 조회한다.
+                    history: (raw.recentHistory || []).map(function (p) {
+                        return p.quantity;
+                    }),
+                };
+            });
+        });
+    }
+
+    /**
+     * 구조물 하나의 재고를 불러와 state.items를 채우고 다시 그린다. 최초 로드와
+     * 1시간 자동 새로고침이 공유하는 경로다.
+     * @param {string} structureId
+     */
+    function loadStockData(structureId) {
+        return window.BonsaiApi.fetchStockItems(structureId)
+            .then(function (data) {
+                state.structureId = data.structure.structureId;
+                if (el.sync) el.sync.textContent = relativeSyncLabel(data.structure.syncedAt);
+                if (data.structure.syncedAt) {
+                    state.sampledAt = new Date(data.structure.syncedAt).getTime();
+                }
+                if (el.sampleMinutes) el.sampleMinutes.textContent = String(state.sampleMs / 60000);
+                if (el.historyWindow) {
+                    el.historyWindow.textContent = String(
+                        (state.sparkPoints * state.sampleMs) / (60 * 60 * 1000)
+                    );
+                }
+                return attachTypeInfo(data.items);
+            })
+            .then(function (items) {
+                state.items = items;
+                render();
+            });
     }
 
     var HUB_STORAGE_KEY = "bonsai:hub";
@@ -827,14 +864,6 @@
         return (item.history || []).length;
     }
 
-    /** 프리셋(일수 또는 "all") → 절대 인덱스 구간 */
-    function presetRange(item, preset) {
-        var total = totalPoints(item);
-        if (preset === "all") return { from: 0, to: total - 1 };
-        var pts = Math.round((Number(preset) * DAY_MS) / state.sampleMs);
-        return { from: Math.max(0, total - pts), to: total - 1 };
-    }
-
     /**
      * 시각 → 절대 인덱스. 반올림하면 고른 날짜 밖의 표본을 집는다 —
      * 6/15 까지 골랐는데 캡션이 6/16 00:00 으로 뜨는 식이다.
@@ -1019,13 +1048,15 @@
         modal.short.textContent = short ? "−" + num(short) : "충족";
         modal.short.className = "stat__v " + (short ? "short" : "ok");
 
-        // 모달을 열 때마다 기본 구간으로 되돌린다 — 직전 품목에서 좁혀 둔 범위가
-        // 다음 품목에 따라붙으면 무엇을 보고 있는지 헷갈린다.
-        setPreset(item, "7");
-
         // 차트는 모달을 연 뒤에 그린다 — 닫힌 dialog 는 폭이 0이라 viewBox 를 맞출 수 없다.
         modal.root.showModal();
-        drawChart(item);
+
+        // 모달을 열 때마다 기본 구간(7일)으로 되돌린다 — 직전 품목에서 좁혀 둔 범위가
+        // 다음 품목에 따라붙으면 무엇을 보고 있는지 헷갈린다. 서버에서 그만큼만 새로
+        // 받아 오므로(on-demand) 여기서 fetch가 끝난 뒤에 그린다.
+        setPreset(item, "7").then(function () {
+            drawChart(item);
+        });
     }
 
     var openItem = null;
@@ -1048,16 +1079,32 @@
             whenLabel(timeAt(range.from, item)) +
             " – " +
             whenLabel(timeAt(range.to, item)) +
-            " · 10분 간격 · 점선은 목표 수량";
+            " · " +
+            state.sampleMs / 60000 +
+            "분 간격 · 점선은 목표 수량";
     }
 
-    /** 프리셋 버튼 상태와 날짜 입력을 함께 맞춘다 — 지금 보는 구간이 날짜로도 읽혀야 한다. */
+    var HISTORY_DAYS_BY_PRESET = { 1: 1, 7: 7, 30: 30, all: 365 };
+
+    /**
+     * 프리셋(일수 또는 "all")만큼 서버에서 그 아이템의 이력을 새로 받아 온다.
+     * 목록 조회 때 온 recentHistory(최근 24건)로는 모달의 큰 구간을 못 보여주므로
+     * on-demand로 따로 조회한다 — 매번 90일치를 다 들고 다닐 필요가 없어서다.
+     * @returns {Promise<void>}
+     */
     function setPreset(item, preset) {
         range.preset = preset;
-        var r = presetRange(item, preset);
-        range.from = r.from;
-        range.to = r.to;
-        syncRangeControls(item);
+        var days = HISTORY_DAYS_BY_PRESET[preset] || 7;
+        return window.BonsaiApi.fetchItemHistory(state.structureId, item.typeId, days).then(
+            function (res) {
+                item.history = (res.history || []).map(function (p) {
+                    return p.quantity;
+                });
+                range.from = 0;
+                range.to = Math.max(0, item.history.length - 1);
+                syncRangeControls(item);
+            }
+        );
     }
 
     function syncRangeControls(item) {
@@ -1097,8 +1144,9 @@
     modal.presets.forEach(function (btn) {
         btn.addEventListener("click", function () {
             if (!openItem) return;
-            setPreset(openItem, btn.getAttribute("data-range"));
-            drawChart(openItem);
+            setPreset(openItem, btn.getAttribute("data-range")).then(function () {
+                drawChart(openItem);
+            });
         });
     });
     modal.dateFrom.addEventListener("change", applyDateRange);
@@ -1899,6 +1947,14 @@
         render();
     });
 
+    if (el.hangar) {
+        el.hangar.addEventListener("change", function () {
+            if (el.hangar.value && el.hangar.value !== state.structureId) {
+                loadStockData(el.hangar.value);
+            }
+        });
+    }
+
     el.sort.addEventListener("change", function () {
         state.sort.key = el.sort.value;
         // 축을 바꾸면 그 축에서 "유용한 쪽"을 기본으로 잡는다. 소진 예상일과 부족률은
@@ -1946,11 +2002,59 @@
         });
     });
 
-    /* ── 시작 ───────────────────────────────────────────── */
+    /* ── 인증 + 시작 ────────────────────────────────────── */
 
-    state.items = loadItems();
-    setupHub();
-    renderSortDir();
-    render();
-    loadPrices();
+    var REFRESH_MS = 60 * 60 * 1000; // ESI 콥 자산 캐시가 1시간이라 그보다 자주 돌 이유가 없다.
+
+    /** authError 쿼리 파라미터(/auth/consume이 실패 시 여기로 리다이렉트하며 붙임). */
+    function authErrorMessage() {
+        var code = new URLSearchParams(window.location.search).get("authError");
+        if (code === "expired_link") {
+            return "로그인 링크가 만료됐거나 이미 사용됐습니다. Discord에서 /보급 명령으로 새 링크를 받아주세요.";
+        }
+        if (code === "missing_token") {
+            return "로그인 링크가 올바르지 않습니다. Discord에서 /보급 명령으로 새 링크를 받아주세요.";
+        }
+        return null;
+    }
+
+    function showAuthGate(message) {
+        if (message && el.authgateMsg) el.authgateMsg.textContent = message;
+        if (el.authgate) el.authgate.hidden = false;
+    }
+
+    function init() {
+        var authErrorMsg = authErrorMessage();
+
+        window.BonsaiApi.checkAuth().then(function (auth) {
+            if (!auth.ok) {
+                showAuthGate(authErrorMsg);
+                return;
+            }
+
+            setupHub();
+            renderSortDir();
+
+            window.BonsaiApi.fetchStructures()
+                .then(function (structures) {
+                    if (!structures.length) {
+                        showAuthGate("등록된 구조물이 없습니다. 관리자에게 문의해주세요.");
+                        return;
+                    }
+                    setupHangarSelect(structures);
+                    return loadStockData(el.hangar.value);
+                })
+                .then(function () {
+                    loadPrices();
+                    setInterval(function () {
+                        if (state.structureId) loadStockData(state.structureId);
+                    }, REFRESH_MS);
+                })
+                .catch(function (err) {
+                    toast(err.message || "재고를 불러오지 못했습니다.", "warn");
+                });
+        });
+    }
+
+    init();
 })();
