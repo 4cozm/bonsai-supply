@@ -393,6 +393,7 @@
      * @param {string} structureId
      */
     function loadStockData(structureId) {
+        toast("조회중…");
         return window.BonsaiApi.fetchStockItems(structureId, {
             division: state.division,
             container: state.container,
@@ -414,6 +415,13 @@
             .then(function (items) {
                 state.items = items;
                 render();
+                toast("조회 성공");
+            })
+            .catch(function (err) {
+                // 여기서 삼켜서(reject 안 하고 resolve) 끝낸다 — 그래야 이 호출을 감싼
+                // init()의 setInterval 등록이 첫 조회 실패와 무관하게 계속 진행돼서
+                // 다음 자동 새로고침 때 다시 시도된다.
+                toast(err.message || "조회 실패", "warn");
             });
     }
 
@@ -1211,15 +1219,18 @@
             item.typeId,
             days,
             item.itemName
-        ).then(function (res) {
+        )
+            .then(function (res) {
                 item.history = (res.history || []).map(function (p) {
                     return p.quantity;
                 });
                 range.from = 0;
                 range.to = Math.max(0, item.history.length - 1);
                 syncRangeControls(item);
-            }
-        );
+            })
+            .catch(function (err) {
+                toast(err.message || "조회 실패", "warn");
+            });
     }
 
     function syncRangeControls(item) {
@@ -1618,6 +1629,7 @@
      */
     function commitTargets() {
         var changes = pendingChanges();
+        toast("저장중…");
         Promise.allSettled(
             changes.map(function (c) {
                 return window.BonsaiApi.saveTarget(state.structureId, {
