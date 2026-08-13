@@ -50,16 +50,39 @@
     }
 
     /**
+     * 이 구조물에 설정된 추적 대상 행어/컨테이너 목록(관리자가 /재고행어설정으로
+     * 등록한 것만) — 행어 선택 UI를 채우는 유일한 출처. 한글 행어 이름을 여기 말고
+     * 다른 곳에 하드코딩하지 않는다.
      * @param {string} structureId
-     * @returns {Promise<{structure:object, items:Array}>}
+     * @returns {Promise<{division:number, containerName:string|null, displayName:string}[]>}
      */
-    function fetchStockItems(structureId) {
-        return get("/v1/stock/structures/" + encodeURIComponent(structureId) + "/items").then(
+    function fetchDivisions(structureId) {
+        return get("/v1/stock/structures/" + encodeURIComponent(structureId) + "/divisions").then(
             function (res) {
-                if (!res.ok) throw new Error("재고 조회 실패 (HTTP " + res.status + ")");
-                return res.body;
+                if (!res.ok) throw new Error("행어 목록 조회 실패 (HTTP " + res.status + ")");
+                return res.body.divisions;
             }
         );
+    }
+
+    /**
+     * @param {string} structureId
+     * @param {{division?:number, container?:string}} [filter] 생략하면 구조물 전체.
+     * @returns {Promise<{structure:object, items:Array}>}
+     */
+    function fetchStockItems(structureId, filter) {
+        var path = "/v1/stock/structures/" + encodeURIComponent(structureId) + "/items";
+        var params = [];
+        if (filter && filter.division != null) {
+            params.push("division=" + encodeURIComponent(filter.division));
+            if (filter.container) params.push("container=" + encodeURIComponent(filter.container));
+        }
+        if (params.length) path += "?" + params.join("&");
+
+        return get(path).then(function (res) {
+            if (!res.ok) throw new Error("재고 조회 실패 (HTTP " + res.status + ")");
+            return res.body;
+        });
     }
 
     /**
@@ -86,6 +109,7 @@
         API_BASE: API_BASE,
         checkAuth: checkAuth,
         fetchStructures: fetchStructures,
+        fetchDivisions: fetchDivisions,
         fetchStockItems: fetchStockItems,
         fetchItemHistory: fetchItemHistory,
     };
