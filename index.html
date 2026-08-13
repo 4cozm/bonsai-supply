@@ -74,6 +74,18 @@
                          출처 — 이름·ID를 여기 또 적으면 나중에 둘이 어긋난다). -->
                     <select class="field__input" data-hub></select>
                 </label>
+                <!-- 관성적으로 영문 이브 클라를 쓰는 사람도 있다 — 매니페스트를 그 클라의
+                     Multibuy에 붙여 넣으려면 품목명이 클라 언어와 맞아야 한다(eveTypes.js
+                     참고). 로컬스토리지에 저장되어 다음 방문에도 유지된다. -->
+                <button
+                    class="btn btn--ghost"
+                    type="button"
+                    data-lang-toggle
+                    aria-label="품목명 표시 언어 전환(한국어/영어)"
+                    title="품목명 표시 언어 전환"
+                >
+                    <span data-lang-toggle-label>KO</span>
+                </button>
                 <p class="rail__sync">
                     <span class="rail__pulse" aria-hidden="true"></span>
                     <span data-sync>4분 전 동기화</span>

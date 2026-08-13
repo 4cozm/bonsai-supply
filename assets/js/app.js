@@ -81,6 +81,8 @@
         pendingCount: document.querySelector("[data-pending-count]"),
         sortDir: document.querySelector("[data-sort-dir]"),
         sortDirLabel: document.querySelector("[data-sort-dir-label]"),
+        langToggle: document.querySelector("[data-lang-toggle]"),
+        langToggleLabel: document.querySelector("[data-lang-toggle-label]"),
     };
 
     /* ── 숫자 표기 ───────────────────────────────────────── */
@@ -450,6 +452,32 @@
             state.priceOk = true;
             render();
             loadPrices();
+        });
+    }
+
+    /**
+     * 품목명 표시 언어(한국어/영어) 토글. eveTypes.js 가 로컬스토리지에 저장·유지한다 —
+     * 여기서는 버튼 라벨을 맞추고, 누르면 이미 불러온 품목들의 이름을 새 언어로
+     * 다시 가져온다(typeId는 그대로라 loadStockData 를 다시 부르면 충분하다).
+     */
+    function setupLangToggle() {
+        if (!el.langToggle || !window.BonsaiEveTypes) return;
+
+        function renderLangLabel() {
+            var lang = window.BonsaiEveTypes.getLanguage();
+            var isEn = lang === "en-us";
+            el.langToggleLabel.textContent = isEn ? "EN" : "KO";
+            el.langToggle.title = isEn
+                ? "품목명을 영어로 표시 중 — 누르면 한국어로"
+                : "품목명을 한국어로 표시 중 — 누르면 영어로";
+        }
+        renderLangLabel();
+
+        el.langToggle.addEventListener("click", function () {
+            var next = window.BonsaiEveTypes.getLanguage() === "en-us" ? "ko" : "en-us";
+            window.BonsaiEveTypes.setLanguage(next);
+            renderLangLabel();
+            if (state.structureId) loadStockData(state.structureId);
         });
     }
 
@@ -2332,6 +2360,7 @@
             }
 
             setupHub();
+            setupLangToggle();
             renderSortDir();
 
             window.BonsaiApi.fetchStructures()
