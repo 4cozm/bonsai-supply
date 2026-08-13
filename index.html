@@ -51,7 +51,7 @@
 
         <header class="rail">
             <div class="rail__brand">
-                <span class="rail__mark" aria-hidden="true"></span>
+                <img class="rail__mark" src="assets/image.ico" alt="" aria-hidden="true" />
                 <span class="rail__name">Bonsai Supply</span>
                 <span class="rail__tenant" data-tenant>CAT</span>
             </div>
@@ -157,6 +157,18 @@
                             <caption class="vh">
                                 행어 재고, 목표 수량, 부족분, 예상 비용, 운반 부피, ISK per m³. 각 열 제목을 눌러 정렬할 수 있습니다.
                             </caption>
+                            <colgroup>
+                                <col class="tbl__pick" />
+                                <col class="tbl__ico" />
+                                <col class="tbl__item" />
+                                <col class="tbl__spark" />
+                                <col class="tbl__bar" />
+                                <col class="tbl__qty" />
+                                <col class="tbl__short" />
+                                <col class="tbl__isk" />
+                                <col class="tbl__vol" />
+                                <col class="tbl__density" />
+                            </colgroup>
                             <thead>
                                 <tr>
                                     <th class="tbl__pick" scope="col">
@@ -194,7 +206,7 @@
                                             <span class="th-sort__arrow" aria-hidden="true"></span>
                                         </button>
                                     </th>
-                                    <th class="tbl__n" scope="col">
+                                    <th class="tbl__n tbl__short" scope="col">
                                         <button type="button" class="th-sort" data-sort-key="short">
                                             부족<span class="th-sort__arrow" aria-hidden="true"></span>
                                         </button>
@@ -204,12 +216,12 @@
                                             예상 비용<span class="th-sort__arrow" aria-hidden="true"></span>
                                         </button>
                                     </th>
-                                    <th class="tbl__n" scope="col">
+                                    <th class="tbl__n tbl__vol" scope="col">
                                         <button type="button" class="th-sort" data-sort-key="volume">
                                             운반 부피<span class="th-sort__arrow" aria-hidden="true"></span>
                                         </button>
                                     </th>
-                                    <th class="tbl__n" scope="col">
+                                    <th class="tbl__n tbl__density" scope="col">
                                         <button type="button" class="th-sort" data-sort-key="density">
                                             ISK/m³<span class="th-sort__arrow" aria-hidden="true"></span>
                                         </button>

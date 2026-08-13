@@ -22,7 +22,7 @@
     --cond: "Oswald", "Pretendard", "Roboto Condensed", "Arial Narrow", "Helvetica Neue Condensed", sans-serif;
     --sans: "IBM Plex Sans", "Pretendard", ui-sans-serif, "Segoe UI", system-ui, sans-serif;
 
-    --gut: 20px;
+    --gut: 16px;
 }
 
 * {
@@ -94,10 +94,10 @@ body {
 }
 
 .rail__mark {
-    width: 10px;
-    height: 10px;
-    border: 1px solid var(--teal);
-    border-left-width: 3px;
+    width: 22px;
+    height: 22px;
+    border: 1px solid var(--edge);
+    object-fit: cover;
     flex: none;
 }
 
@@ -210,10 +210,11 @@ select.field__input {
 .grid {
     display: grid;
     /* 매니페스트가 표(아이콘·수량·부피·비용)로 바뀌면서 340px 로는 옆으로 슬라이드해야만
-       다 보였다. 460px 로 넓혀 웬만한 품목명은 그대로 들어가게 했다 — 그래도 못 들어가는
-       긴 이름은 .mname 의 ellipsis 가 안전망으로 잘라낸다. */
-    grid-template-columns: minmax(0, 1fr) 460px;
-    gap: 28px;
+       다 보였다. 420px 로 넓혀 웬만한 품목명은 그대로 들어가게 했다 — 그래도 못 들어가는
+       긴 이름은 .mname 의 ellipsis 가 안전망으로 잘라낸다. 재고 표에 운반부피/ISK per m³
+       열이 추가된 뒤로는 이 폭도 표 쪽에 최대한 양보해야 해서 460px 에서 한 번 줄였다. */
+    grid-template-columns: minmax(0, 1fr) 420px;
+    gap: 20px;
     align-items: start;
     margin-top: 4px;
 }
@@ -308,8 +309,14 @@ select.field__input {
     overflow-x: auto;
 }
 
+/* table-layout: fixed — auto 레이아웃은 정렬로 행 순서만 바뀌어도 모든 셀 내용을
+   다시 재보고 열 폭을 계산한다(수백 행 기준 렌더링 코스트의 실제 원인이었다).
+   고정 레이아웃은 <colgroup> 폭만 보고 계산해서, 행을 옮기는 resortRows() 가
+   진짜로 가벼워진다 — 대신 열 폭이 하드캡이라 아래 폭들은 실측 최악값 기준으로
+   여유를 두고 잡았다(품목명 열만 나머지 공간을 가져가는 유일한 가변 열). */
 .tbl {
     width: 100%;
+    table-layout: fixed;
     border-collapse: collapse;
     font-size: 13px;
 }
@@ -334,7 +341,7 @@ select.field__input {
     align-items: center;
     gap: 4px;
     width: 100%;
-    padding: 9px 12px;
+    padding: 8px 9px;
     cursor: pointer;
     color: inherit;
     font: inherit;
@@ -365,7 +372,7 @@ select.field__input {
 }
 
 .tbl td {
-    padding: 9px 12px;
+    padding: 8px 9px;
     border-bottom: 1px solid var(--plate);
     vertical-align: middle;
 }
@@ -388,18 +395,37 @@ select.field__input {
 .tbl__pick {
     width: 34px;
 }
-/* 고정폭 열이 많아서, 이름이 먼저 쥐어짜인다. 바닥을 깔아 3줄로 쪼개지지 않게 한다. */
+.tbl__ico {
+    width: 52px;
+}
+/* 고정폭 열이 많아서, 이름이 먼저 쥐어짜인다. 바닥을 깔아 3줄로 쪼개지지 않게 한다.
+   table-layout: fixed 아래에서 폭을 안 준 유일한 열이라 나머지 공간을 전부 가져간다. */
 .tbl__item {
-    min-width: 200px;
+    min-width: 176px;
 }
 .tbl__bar {
-    width: 84px;
+    width: 64px;
 }
 .tbl__spark {
-    width: 104px;
+    width: 116px;
 }
+/* 보유/목표 — qty__a(58) + slash(12) + target(62) + 좌우 패딩(18) */
+.tbl__qty {
+    width: 164px;
+}
+/* "−999,999" + 그 아래 줄 "999.9일 남음" 중 넓은 쪽 기준. */
+.tbl__short {
+    width: 88px;
+}
+/* isk()는 100만 미만이면 약어 없이 "999,999 isk"로 나와 이 구간이 제일 넓다. */
 .tbl__isk {
-    width: 108px;
+    width: 122px;
+}
+.tbl__vol {
+    width: 90px;
+}
+.tbl__density {
+    width: 132px;
 }
 
 /* 체크박스 — 라운드 없음, 앰버 채움 */
