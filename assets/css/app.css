@@ -440,14 +440,11 @@ select.field__input {
 .tbl__short {
     width: 88px;
 }
-/* isk()는 100만 미만이면 약어 없이 "999,999 isk"로 나와 이 구간이 제일 넓다. */
-.tbl__isk {
-    width: 112px;
-}
 .tbl__vol {
     width: 90px;
 }
-.tbl__density {
+/* isk()는 100만 미만이면 약어 없이 "999,999 isk/개"로 나와 이 구간이 제일 넓다. */
+.tbl__price {
     width: 124px;
 }
 
@@ -677,17 +674,6 @@ select.field__input {
 }
 .ok {
     color: var(--dim);
-}
-
-.isk {
-    display: block;
-    font-variant-numeric: tabular-nums;
-}
-.isk__unit {
-    display: block;
-    margin-top: 2px;
-    color: var(--dim);
-    font: 11px/1.3 var(--mono);
 }
 
 /* 소진 예상 — 부족 수량이 "얼마나"라면 이건 "언제까지"다. */
@@ -1521,8 +1507,8 @@ select.field__input {
         grid-template-columns: 20px minmax(0, 1fr) auto;
         grid-template-areas:
             "pick name  short"
-            "pick qty   isk"
-            "pick vol   density"
+            "pick qty   vol"
+            "pick price price"
             "pick bar   bar";
         gap: 4px 10px;
         padding: 11px 12px;
@@ -1560,20 +1546,15 @@ select.field__input {
         grid-area: qty;
         text-align: left;
     }
-    .tbl td.tbl__isk {
-        grid-area: isk;
-        width: auto;
-        text-align: right;
-    }
     .tbl td.tbl__vol {
         grid-area: vol;
         width: auto;
-        text-align: left;
+        text-align: right;
         color: var(--dim);
         font-size: 11px;
     }
-    .tbl td.tbl__density {
-        grid-area: density;
+    .tbl td.tbl__price {
+        grid-area: price;
         width: auto;
         text-align: right;
         color: var(--dim);
@@ -1582,10 +1563,6 @@ select.field__input {
     .tbl td.tbl__bar {
         grid-area: bar;
         width: auto;
-    }
-    /* 카드 폭에서는 단가가 줄바꿈되어 행만 키운다. 줄 합계만 남긴다. */
-    .isk__unit {
-        display: none;
     }
     .tbl {
         font-size: 12px;

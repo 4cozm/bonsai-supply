@@ -226,18 +226,6 @@
         return item.daysLeft == null ? Infinity : item.daysLeft;
     }
 
-    /** 부피당 가치 — 한 번에 다 못 실을 때 무엇을 먼저 싣느냐를 가른다. */
-    function iskPerM3(item) {
-        var v = item.unitVolume || 0;
-        if (!v) return 0;
-        return unitPrice(item) / v;
-    }
-
-    /** 부족분을 전부 채우려면 필요한 운반 부피 — "운반 부피" 열/정렬 기준으로 쓴다. */
-    function deficitVolume(item) {
-        return deficit(item) * (item.unitVolume || 0);
-    }
-
     /**
      * 매니페스트에 실을 수량. 기본은 부족분 전체지만 사용자나 오마카세가 조절할 수 있다.
      * 저장된 오버라이드가 현재 부족분보다 크면(목표를 낮췄거나 재고가 늘어난 경우) 읽는
@@ -269,10 +257,6 @@
 
     function unitPrice(item) {
         return state.unitPrices[item.key] || 0;
-    }
-
-    function lineCost(item) {
-        return deficit(item) * unitPrice(item);
     }
 
     function iconSrc(item) {
@@ -505,9 +489,14 @@
             asc: "적은 순",
             desc: "많은 순",
         },
-        cost: { value: lineCost, desc: "비싼 순", asc: "싼 순" },
-        volume: { value: deficitVolume, desc: "큰 순", asc: "작은 순" },
-        density: { value: iskPerM3, desc: "높은 순", asc: "낮은 순" },
+        volume: {
+            value: function (i) {
+                return i.unitVolume || 0;
+            },
+            desc: "큰 순",
+            asc: "작은 순",
+        },
+        price: { value: unitPrice, desc: "비싼 순", asc: "싼 순" },
         name: { value: null, asc: "가나다 순", desc: "역순" },
     };
 
@@ -537,8 +526,7 @@
         var spec = SORT[state.sort.key] || SORT.days;
         el.sortDirLabel.textContent = state.sort.asc ? spec.asc : spec.desc;
 
-        // 표 헤더 중 지금 정렬 기준인 것만 강조하고 화살표로 방향을 보여준다 —
-        // 드롭다운(운반부피/ISK per m³)만으로는 표 헤더 기준 정렬 상태를 알 길이 없다.
+        // 표 헤더 중 지금 정렬 기준인 것만 강조하고 화살표로 방향을 보여준다.
         document.querySelectorAll("[data-sort-key]").forEach(function (btn) {
             var active = btn.getAttribute("data-sort-key") === state.sort.key;
             btn.classList.toggle("is-active", active);
@@ -1418,43 +1406,33 @@
         tdShort.appendChild(shortMain);
         // 가상 스크롤이 행 높이를 고정값으로 가정하므로, 소진 예상일이 없는 행도
         // 빈 줄을 그대로 둔다(항상 2줄) — isk__unit과 같은 이유로 조건부 append를 뺐다.
+        // 목표가 없으면 애초에 추적 중이 아니라는 뜻이라, 소진 예측은 관리 대상이
+        // 아닌 아이템에 대한 불필요한 정보다 — daysLeft 자체는 target과 무관하게
+        // 소비 추세만 보고 계산되므로 여기서 따로 걸러야 한다.
         var left = daysLeft(item);
+        var showRunout = isFinite(left) && !hasNoTarget(item);
         var runOut = document.createElement("span");
-        runOut.className = "runout" + (isFinite(left) && left <= 3 ? " is-soon" : "");
-        runOut.textContent = isFinite(left)
+        runOut.className = "runout" + (showRunout && left <= 3 ? " is-soon" : "");
+        runOut.textContent = showRunout
             ? (left < 10 ? Math.round(left * 10) / 10 : Math.round(left)) + "일 남음"
             : "";
         tdShort.appendChild(runOut);
         tr.appendChild(tdShort);
 
-        // 예상 비용 + 단가 — 부족하지 않으면 "0 ISK"(살 게 없으니 비용도 0). 부족한데도
-        // "—"면 그건 진짜로 값이 없는 경우(단가를 아직 못 받아 옴)라 isk()가 알아서 그렇게
-        // 찍는다 — 이 둘을 헷갈리면 "부피 조회가 안 된다"처럼 멀쩡한 0을 오류로 오해한다.
-        var tdIsk = document.createElement("td");
-        tdIsk.className = "tbl__n tbl__isk";
-        var total = document.createElement("span");
-        total.className = "isk";
-        total.textContent = short ? isk(lineCost(item)) : "0 ISK";
-        var unit = document.createElement("span");
-        unit.className = "isk__unit";
-        unit.textContent = unitPrice(item) ? unitPriceLabel(unitPrice(item)) + " /개" : "";
-        tdIsk.appendChild(total);
-        tdIsk.appendChild(unit);
-        tr.appendChild(tdIsk);
-
-        // 운반 부피 — 부족분을 전부 채우는 데 필요한 부피. 부족하지 않으면(채울 게 없으면)
-        // "0 m³" — 비용 열과 같은 이유로 "—"를 안 쓴다.
+        // 예상 비용(총액)은 표에서 뺐다 — 담지도 않은 걸 매 행마다 숫자로 박아 두는 게
+        // 오히려 오해를 샀다(목표 없는 아이템은 항상 0이라 "조회가 안 된다"로 보임).
+        // 실제로 살지/옮길지 정한 뒤의 총액은 매니페스트 쪽에서만 보여준다. 개당 부피/개당
+        // 비용은 재고 상태와 무관한 품목 고유 성질이라 남겨 둔다 — "여유 공간 30m³엔 뭐가
+        // 몇 개 들어가나, 그거 하나에 얼마인가"를 목록만 보고 가늠하려면 필요하다.
         var tdVolume = document.createElement("td");
         tdVolume.className = "tbl__n tbl__vol";
-        tdVolume.textContent = volume(deficitVolume(item)) + " m³";
+        tdVolume.textContent = item.unitVolume ? volume(item.unitVolume) + " m³" : "—";
         tr.appendChild(tdVolume);
 
-        // ISK/m³ — 부족 여부와 무관한 품목 자체의 성질이라 항상 보여준다.
-        var tdDensity = document.createElement("td");
-        tdDensity.className = "tbl__n tbl__density";
-        var density = iskPerM3(item);
-        tdDensity.textContent = density ? isk(density) + "/m³" : "—";
-        tr.appendChild(tdDensity);
+        var tdPrice = document.createElement("td");
+        tdPrice.className = "tbl__n tbl__price";
+        tdPrice.textContent = unitPrice(item) ? unitPriceLabel(unitPrice(item)) + "/개" : "—";
+        tr.appendChild(tdPrice);
 
         return tr;
     }
@@ -1588,9 +1566,9 @@
     // .tbl tbody tr.row 의 CSS height(52px)와 반드시 일치해야 한다 — 어긋나면
     // 스크롤할수록 렌더된 구간과 실제 스크롤 위치가 밀린다.
     var ROW_H = 52;
-    // <colgroup>의 <col> 개수(pick·ico·item·spark·bar·qty·short·isk·vol·density)와 같아야
+    // <colgroup>의 <col> 개수(pick·ico·item·spark·bar·qty·short·vol·price)와 같아야
     // spacer 행의 colspan이 표 전체 폭을 정확히 덮는다.
-    var TBL_COLS = 10;
+    var TBL_COLS = 9;
     // 스크롤이 튀는 순간에도 빈 틈이 먼저 보이지 않게, 화면 위아래로 더 그려 두는 여유 행 수.
     var ROW_BUFFER = 8;
 
@@ -2236,8 +2214,7 @@
         });
     }
 
-    // 정렬은 전부 표 헤더 클릭으로 한다(예전엔 드롭다운도 있었는데, 운반부피/ISK per m³도
-    // 이제 표 열이라 드롭다운이 따로 필요 없어졌다 — 필터가 두 군데로 나뉘어 있던 걸 합침).
+    // 정렬은 전부 표 헤더 클릭으로 한다 — 드롭다운은 필터가 두 군데로 나뉘던 걸 합치며 없앴다.
     var ASC_DEFAULT_SORT_KEYS = ["days", "ratio", "name", "stocked"];
 
     function setSortKey(key) {
