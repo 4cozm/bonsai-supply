@@ -118,6 +118,18 @@
             });
     }
 
+    // 실측 당시(15개) URL은 짧았지만, 실제 재고 typeId 종류가 몇백 개로 늘어나면
+    // 쿼리스트링이 서버 URI 길이 제한을 넘어 414로 통째로 실패한다 — 청크로 쪼갠다.
+    var TYPES_PER_REQUEST = 200;
+
+    function chunk(arr, size) {
+        var out = [];
+        for (var i = 0; i < arr.length; i += size) {
+            out.push(arr.slice(i, i + size));
+        }
+        return out;
+    }
+
     function fuzzworkProvider(items, hubId) {
         var hub = hubById(hubId);
         var priced = items.filter(function (i) {
@@ -142,37 +154,47 @@
             (namesByType[item.typeId] = namesByType[item.typeId] || []).push(item.name);
         });
         var typeIds = Object.keys(namesByType);
-        var url = FUZZWORK_URL + "?station=" + hub.id + "&types=" + typeIds.join(",");
+        var batches = chunk(typeIds, TYPES_PER_REQUEST);
 
-        return fetch(url)
-            .then(function (r) {
-                if (!r.ok) throw new Error("Fuzzwork " + r.status);
-                return r.json();
-            })
-            .then(function (data) {
-                var prices = {};
-                var noQuote = 0;
-                typeIds.forEach(function (id) {
-                    var row = data[id];
-                    var p = row && row.sell && parseFloat(row.sell.percentile);
-                    if (!p) {
-                        noQuote++; // 매도 호가가 없는(비유동적인) 품목 — 값을 지어내지 않는다
-                        return;
-                    }
-                    namesByType[id].forEach(function (name) {
-                        prices[name] = p;
-                    });
+        return Promise.all(
+            batches.map(function (batchIds) {
+                var url = FUZZWORK_URL + "?station=" + hub.id + "&types=" + batchIds.join(",");
+                return fetch(url).then(function (r) {
+                    if (!r.ok) throw new Error("Fuzzwork " + r.status);
+                    return r.json();
                 });
-
-                var missing = unpricedCount + noQuote;
-                return {
-                    source: "Fuzzwork(" + hub.name + " 매도)" + (missing ? " · " + missing + "개 가격 없음" : ""),
-                    ok: true,
-                    approx: false,
-                    pricedAt: new Date(),
-                    unitPrices: prices,
-                };
+            })
+        ).then(function (batchResults) {
+            var data = {};
+            batchResults.forEach(function (batchData) {
+                Object.keys(batchData).forEach(function (id) {
+                    data[id] = batchData[id];
+                });
             });
+
+            var prices = {};
+            var noQuote = 0;
+            typeIds.forEach(function (id) {
+                var row = data[id];
+                var p = row && row.sell && parseFloat(row.sell.percentile);
+                if (!p) {
+                    noQuote++; // 매도 호가가 없는(비유동적인) 품목 — 값을 지어내지 않는다
+                    return;
+                }
+                namesByType[id].forEach(function (name) {
+                    prices[name] = p;
+                });
+            });
+
+            var missing = unpricedCount + noQuote;
+            return {
+                source: "Fuzzwork(" + hub.name + " 매도)" + (missing ? " · " + missing + "개 가격 없음" : ""),
+                ok: true,
+                approx: false,
+                pricedAt: new Date(),
+                unitPrices: prices,
+            };
+        });
     }
 
     window.BonsaiPricing = {
