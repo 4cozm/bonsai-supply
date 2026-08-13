@@ -65,6 +65,7 @@
         manifestEmpty: document.querySelector("[data-manifest-empty]"),
         copy: document.querySelector("[data-copy]"),
         toast: document.querySelector("[data-toast]"),
+        toastText: document.querySelector("[data-toast-text]"),
         query: document.getElementById("q"),
         hangar: document.getElementById("hangar"),
         division: document.getElementById("division"),
@@ -385,7 +386,7 @@
      * @param {string} structureId
      */
     function loadStockData(structureId) {
-        toast("조회중…");
+        toast("조회중…", null, true);
         return window.BonsaiApi.fetchStockItems(structureId, {
             division: state.division,
             container: state.container,
@@ -1532,15 +1533,21 @@
             renderManifest();
         });
         qtyWrap.appendChild(qty);
-        var over = currentQty - deficit(item);
+        var deficitQty = deficit(item);
+        var over = currentQty - deficitQty;
         if (over > 0) {
             var warn = document.createElement("span");
             warn.className = "mqty__warn";
             warn.textContent = "▲";
             warn.setAttribute("aria-hidden", "true");
-            warn.title = "목표치보다 " + num(over) + "개 초과";
+            // 그냥 "N개 초과"만 쓰면 기준(목표=부족분)이 몇 개였는지 몰라 숫자만 봐선
+            // 얼마나 더 담은 건지 가늠이 안 된다 — 기준값을 같이 보여준다.
+            warn.title = "목표 " + num(deficitQty) + "개 · 초과 " + num(over) + "개";
             qtyWrap.appendChild(warn);
-            qty.setAttribute("aria-label", item.name + " 매니페스트 수량, 목표치보다 " + num(over) + "개 초과");
+            qty.setAttribute(
+                "aria-label",
+                item.name + " 매니페스트 수량, 목표 " + num(deficitQty) + "개 중 " + num(over) + "개 초과"
+            );
         }
         tdQty.appendChild(qtyWrap);
         tr.appendChild(tdQty);
@@ -1749,7 +1756,7 @@
      */
     function commitTargets() {
         var changes = pendingChanges();
-        toast("저장중…");
+        toast("저장중…", null, true);
         Promise.allSettled(
             changes.map(function (c) {
                 return window.BonsaiApi.saveTarget(state.structureId, {
@@ -1975,12 +1982,21 @@
 
     var toastTimer = null;
 
-    function toast(message, tone) {
-        el.toast.textContent = message;
+    /**
+     * @param {boolean} [busy] true면 자동으로 안 사라진다 — 오래 걸리는 조회 중에
+     *        "조회중…"이 2.6초 만에 사라지면 그새 멈춘 줄 알기 쉽다. 도는 표시(spin)를
+     *        곁들여 "기다리면 된다"를 보여주고, 조회가 끝나 결과 toast()가 다시 불릴
+     *        때(busy 없이) 정상적으로 사라지게 둔다.
+     */
+    function toast(message, tone, busy) {
+        el.toastText.textContent = message;
         if (tone) el.toast.setAttribute("data-tone", tone);
         else el.toast.removeAttribute("data-tone");
+        if (busy) el.toast.setAttribute("data-busy", "");
+        else el.toast.removeAttribute("data-busy");
         el.toast.hidden = false;
         clearTimeout(toastTimer);
+        if (busy) return;
         toastTimer = setTimeout(function () {
             el.toast.hidden = true;
         }, 2600);
