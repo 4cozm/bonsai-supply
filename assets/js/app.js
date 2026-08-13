@@ -78,7 +78,6 @@
         manifestIsk: document.querySelector("[data-manifest-isk]"),
         pending: document.querySelector("[data-pending]"),
         pendingCount: document.querySelector("[data-pending-count]"),
-        sort: document.querySelector("[data-sort]"),
         sortDir: document.querySelector("[data-sort-dir]"),
         sortDirLabel: document.querySelector("[data-sort-dir-label]"),
     };
@@ -231,6 +230,11 @@
         var v = item.unitVolume || 0;
         if (!v) return 0;
         return unitPrice(item) / v;
+    }
+
+    /** 부족분을 전부 채우려면 필요한 운반 부피 — "운반 부피" 열/정렬 기준으로 쓴다. */
+    function deficitVolume(item) {
+        return deficit(item) * (item.unitVolume || 0);
     }
 
     /**
@@ -491,14 +495,15 @@
         days: { value: daysLeft, asc: "급한 순", desc: "여유 순" },
         ratio: { value: ratioOf, asc: "많이 부족한 순", desc: "덜 부족한 순" },
         short: { value: deficit, desc: "많은 순", asc: "적은 순" },
-        cost: { value: lineCost, desc: "비싼 순", asc: "싼 순" },
-        volume: {
+        stocked: {
             value: function (i) {
-                return deficit(i) * (i.unitVolume || 0);
+                return i.stocked;
             },
-            desc: "큰 순",
-            asc: "작은 순",
+            asc: "적은 순",
+            desc: "많은 순",
         },
+        cost: { value: lineCost, desc: "비싼 순", asc: "싼 순" },
+        volume: { value: deficitVolume, desc: "큰 순", asc: "작은 순" },
         density: { value: iskPerM3, desc: "높은 순", asc: "낮은 순" },
         name: { value: null, asc: "가나다 순", desc: "역순" },
     };
@@ -528,6 +533,16 @@
     function renderSortDir() {
         var spec = SORT[state.sort.key] || SORT.days;
         el.sortDirLabel.textContent = state.sort.asc ? spec.asc : spec.desc;
+
+        // 표 헤더 중 지금 정렬 기준인 것만 강조하고 화살표로 방향을 보여준다 —
+        // 드롭다운(운반부피/ISK per m³)만으로는 표 헤더 기준 정렬 상태를 알 길이 없다.
+        document.querySelectorAll("[data-sort-key]").forEach(function (btn) {
+            var active = btn.getAttribute("data-sort-key") === state.sort.key;
+            btn.classList.toggle("is-active", active);
+            btn.setAttribute("aria-sort", active ? (state.sort.asc ? "ascending" : "descending") : "none");
+            var arrow = btn.querySelector(".th-sort__arrow");
+            if (arrow) arrow.textContent = active ? (state.sort.asc ? "▲" : "▼") : "";
+        });
     }
 
     /* ── 표시 대상 ──────────────────────────────────────── */
@@ -1419,6 +1434,20 @@
         tdIsk.appendChild(unit);
         tr.appendChild(tdIsk);
 
+        // 운반 부피 — 부족분을 전부 채우는 데 필요한 부피. 비용 열과 같은 규칙으로,
+        // 부족하지 않으면(채울 게 없으면) 숫자 대신 "—".
+        var tdVolume = document.createElement("td");
+        tdVolume.className = "tbl__n tbl__vol";
+        tdVolume.textContent = short ? volume(deficitVolume(item)) + " m³" : "—";
+        tr.appendChild(tdVolume);
+
+        // ISK/m³ — 부족 여부와 무관한 품목 자체의 성질이라 항상 보여준다.
+        var tdDensity = document.createElement("td");
+        tdDensity.className = "tbl__n tbl__density";
+        var density = iskPerM3(item);
+        tdDensity.textContent = density ? isk(density) + "/m³" : "—";
+        tr.appendChild(tdDensity);
+
         return tr;
     }
 
@@ -2135,13 +2164,28 @@
         });
     }
 
-    el.sort.addEventListener("change", function () {
-        state.sort.key = el.sort.value;
-        // 축을 바꾸면 그 축에서 "유용한 쪽"을 기본으로 잡는다. 소진 예상일과 부족률은
-        // 급한 것이 앞에 와야 하고, 비용·부피·밀도는 큰 것이 앞에 와야 눈에 띈다.
-        state.sort.asc = el.sort.value === "days" || el.sort.value === "ratio" || el.sort.value === "name";
+    // 정렬은 전부 표 헤더 클릭으로 한다(예전엔 드롭다운도 있었는데, 운반부피/ISK per m³도
+    // 이제 표 열이라 드롭다운이 따로 필요 없어졌다 — 필터가 두 군데로 나뉘어 있던 걸 합침).
+    var ASC_DEFAULT_SORT_KEYS = ["days", "ratio", "name", "stocked"];
+
+    function setSortKey(key) {
+        if (state.sort.key === key) {
+            // 이미 그 기준으로 보고 있으면 다시 눌렀을 때 방향만 뒤집는다.
+            state.sort.asc = !state.sort.asc;
+        } else {
+            state.sort.key = key;
+            // 축을 바꾸면 그 축에서 "유용한 쪽"을 기본으로 잡는다. 소진 예상일·부족률·
+            // 이름·보유량은 적은/급한 쪽이 앞에 와야 하고, 나머지는 큰 쪽이 눈에 띈다.
+            state.sort.asc = ASC_DEFAULT_SORT_KEYS.indexOf(key) !== -1;
+        }
         renderSortDir();
         render();
+    }
+
+    document.querySelectorAll("[data-sort-key]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+            setSortKey(btn.getAttribute("data-sort-key"));
+        });
     });
 
     el.sortDir.addEventListener("click", function () {
