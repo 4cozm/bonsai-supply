@@ -364,6 +364,11 @@
                     // 섞어야 항상 유일하다.
                     key: raw.typeId + "::" + (raw.itemName || ""),
                     name: raw.itemName || info.name || "이름 미확인 (typeId " + raw.typeId + ")",
+                    // 커스텀명이 있으면 name이 그걸로 덮여서 원래 함선 타입명(예: "Punisher")이
+                    // 사라진다 — "ฅ^•ﻌ•^ฅ 퍼_니셔"로도 "Punisher"로도 검색되게 하려면 타입명을
+                    // 따로 들고 있어야 한다(visibleItems 검색에서 씀). 커스텀명이 없으면 name과
+                    // 같은 값이라 중복이지만 무해하다.
+                    typeName: info.name || "",
                     group: info.group || "",
                     unitVolume: info.unitVolume || 0,
                     stocked: raw.stocked,
@@ -575,8 +580,11 @@
             if (state.filter === "ok" && (hasNoTarget(item) || isShort(item))) return false;
             if (state.filter === "notarget" && !hasNoTarget(item)) return false;
             if (!q) return true;
+            // 함선은 name이 커스텀명으로 덮여 있어도, 원래 함선 타입명(예: "Punisher"
+            // 또는 "퍼니셔" — 표시 언어에 따라 달라진다)으로도 찾을 수 있어야 한다.
             return (
                 item.name.toLowerCase().indexOf(q) !== -1 ||
+                (item.typeName && item.typeName.toLowerCase().indexOf(q) !== -1) ||
                 String(item.group || "")
                     .toLowerCase()
                     .indexOf(q) !== -1
