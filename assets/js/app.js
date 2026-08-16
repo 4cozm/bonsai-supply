@@ -71,6 +71,7 @@
         division: document.getElementById("division"),
         hub: document.querySelector("[data-hub]"),
         sync: document.querySelector("[data-sync]"),
+        nextSync: document.querySelector("[data-next-sync]"),
         priceSource: document.querySelector("[data-price-source]"),
         priceNote: document.querySelector(".note"),
         historyWindow: document.querySelector("[data-history-window]"),
@@ -278,6 +279,17 @@
         return Math.round(diffMin / 60) + "시간 전 동기화";
     }
 
+    // 백엔드가 ESI 콥 자산 응답의 Expires 헤더 기반으로 구조물별로 잡는 실제 다음
+    // 동기화 예정 시각(TrackedStructure.nextSyncAt) — "방금 아이템을 넣었는데 언제
+    // 반영되나"를 사용자가 감 잡을 수 있게 마지막 동기화 시각 옆에 같이 보여준다.
+    function nextSyncLabel(iso) {
+        if (!iso) return "";
+        var diffMin = Math.round((new Date(iso).getTime() - Date.now()) / 60000);
+        if (diffMin <= 0) return "곧 동기화 예정";
+        if (diffMin < 60) return diffMin + "분 후 동기화 예정";
+        return Math.round(diffMin / 60) + "시간 후 동기화 예정";
+    }
+
     function setupHangarSelect(structures) {
         if (!el.hangar) return;
         el.hangar.textContent = "";
@@ -385,7 +397,7 @@
         });
     }
 
-    // loadStockData는 최초 로드/행어 전환/1시간 자동 새로고침이 전부 공유하는 경로라
+    // loadStockData는 최초 로드/행어 전환/자동 새로고침이 전부 공유하는 경로라
     // 겹쳐 불릴 수 있다(예: 페이지 열자마자 "전체"로 큰 요청이 나간 상태에서 바로
     // 특정 행어를 고르면 두 요청이 동시에 뜬다) — 응답이 "늦게 시작한 순"이 아니라
     // "늦게 도착한 순"으로 처리되면, 먼저 시작한 무거운 "전체" 요청이 나중에 끝나면서
@@ -396,7 +408,7 @@
 
     /**
      * 구조물 하나의 재고를 불러와 state.items를 채우고 다시 그린다. 최초 로드와
-     * 1시간 자동 새로고침이 공유하는 경로다.
+     * 자동 새로고침(scheduleAutoRefresh)이 공유하는 경로다.
      * @param {string} structureId
      */
     function loadStockData(structureId) {
@@ -410,9 +422,11 @@
                 if (seq !== loadStockDataSeq) return null; // 이 사이에 더 최신 요청이 시작됨 — 버린다.
                 state.structureId = data.structure.structureId;
                 if (el.sync) el.sync.textContent = relativeSyncLabel(data.structure.syncedAt);
+                if (el.nextSync) el.nextSync.textContent = nextSyncLabel(data.structure.nextSyncAt);
                 if (data.structure.syncedAt) {
                     state.sampledAt = new Date(data.structure.syncedAt).getTime();
                 }
+                scheduleAutoRefresh(data.structure.nextSyncAt);
                 if (el.sampleMinutes) el.sampleMinutes.textContent = String(state.sampleMs / 60000);
                 if (el.historyWindow) {
                     el.historyWindow.textContent = String(
@@ -431,9 +445,11 @@
             })
             .catch(function (err) {
                 if (seq !== loadStockDataSeq) return;
-                // 여기서 삼켜서(reject 안 하고 resolve) 끝낸다 — 그래야 이 호출을 감싼
-                // init()의 setInterval 등록이 첫 조회 실패와 무관하게 계속 진행돼서
-                // 다음 자동 새로고침 때 다시 시도된다.
+                // 실패해도 다음 자동 새로고침을 반드시 다시 예약한다 — 성공 경로의
+                // scheduleAutoRefresh 호출까지 못 갔으니 여기서 안 하면 첫 조회가 실패하는
+                // 순간 자동 새로고침 체인 자체가 영영 안 도는 것으로 끝나 버린다. nextSyncAt을
+                // 모르니 폴백 간격(AUTO_REFRESH_FALLBACK_MS)으로 잡는다.
+                scheduleAutoRefresh(null);
                 toast(err.message || "조회 실패", "warn");
             });
     }
@@ -2368,7 +2384,34 @@
 
     /* ── 인증 + 시작 ────────────────────────────────────── */
 
-    var REFRESH_MS = 60 * 60 * 1000; // ESI 콥 자산 캐시가 1시간이라 그보다 자주 돌 이유가 없다.
+    // nextSyncAt(백엔드가 ESI Expires 헤더로 구조물별로 잡는 실제 다음 동기화 시각)을
+    // 몰랐을 때만 쓰는 폴백 — 예전 고정 1시간 주기와 같은 값이라 몰라도 예전보다
+    // 나빠지지 않는다.
+    var AUTO_REFRESH_FALLBACK_MS = 60 * 60 * 1000;
+    // nextSyncAt 직후 살짝 여유(백엔드가 그 시각에 동기화를 "시작"하는 거지 그 전에
+    // 이미 끝나 있다는 보장이 없어서, 너무 딱 맞춰 부르면 갱신 전 데이터를 받을 수 있음).
+    var AUTO_REFRESH_BUFFER_MS = 15 * 1000;
+    // nextSyncAt이 이미 지났거나 아주 가까워도 너무 촉박하게 다시 부르지 않게 하는 하한.
+    var AUTO_REFRESH_MIN_MS = 30 * 1000;
+    var refreshTimerId = null;
+
+    /**
+     * 다음 자동 새로고침을 예약한다. loadStockData가 매번 응답의 nextSyncAt으로
+     * 다시 호출하는 자기갱신 체인이라 별도 setInterval이 없다 — 수동으로 행어/필터를
+     * 바꿔도 그 즉시 loadStockData가 다시 불리면서 최신 nextSyncAt 기준으로 재조정된다.
+     * @param {string|null} nextSyncAtIso
+     */
+    function scheduleAutoRefresh(nextSyncAtIso) {
+        if (refreshTimerId) clearTimeout(refreshTimerId);
+        var delay = AUTO_REFRESH_FALLBACK_MS;
+        if (nextSyncAtIso) {
+            var untilNext = new Date(nextSyncAtIso).getTime() - Date.now() + AUTO_REFRESH_BUFFER_MS;
+            delay = Math.max(AUTO_REFRESH_MIN_MS, untilNext);
+        }
+        refreshTimerId = setTimeout(function () {
+            if (state.structureId) loadStockData(state.structureId);
+        }, delay);
+    }
 
     /** authError 쿼리 파라미터(/auth/consume이 실패 시 여기로 리다이렉트하며 붙임). */
     function authErrorMessage() {
@@ -2411,9 +2454,9 @@
                 })
                 .then(function () {
                     loadPrices();
-                    setInterval(function () {
-                        if (state.structureId) loadStockData(state.structureId);
-                    }, REFRESH_MS);
+                    // 자동 새로고침은 loadStockData 안 scheduleAutoRefresh가 매번 응답의
+                    // nextSyncAt으로 스스로 다시 예약한다 — loadStructureData가 이미 위에서
+                    // loadStockData를 한 번 불렀으니 여기서 별도로 시작할 필요가 없다.
                 })
                 .catch(function (err) {
                     toast(err.message || "재고를 불러오지 못했습니다.", "warn");
