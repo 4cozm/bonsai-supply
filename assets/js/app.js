@@ -385,18 +385,29 @@
         });
     }
 
+    // loadStockData는 최초 로드/행어 전환/1시간 자동 새로고침이 전부 공유하는 경로라
+    // 겹쳐 불릴 수 있다(예: 페이지 열자마자 "전체"로 큰 요청이 나간 상태에서 바로
+    // 특정 행어를 고르면 두 요청이 동시에 뜬다) — 응답이 "늦게 시작한 순"이 아니라
+    // "늦게 도착한 순"으로 처리되면, 먼저 시작한 무거운 "전체" 요청이 나중에 끝나면서
+    // 이미 반영된 특정 행어 결과를 덮어써 버린다(행어 선택 UI는 멀쩡한데 목록만 전체로
+    // 보이는 버그의 원인이었다). 매 호출마다 번호를 매겨, 자기보다 늦게 시작된 호출이
+    // 이미 있으면 응답이 와도 조용히 버린다.
+    var loadStockDataSeq = 0;
+
     /**
      * 구조물 하나의 재고를 불러와 state.items를 채우고 다시 그린다. 최초 로드와
      * 1시간 자동 새로고침이 공유하는 경로다.
      * @param {string} structureId
      */
     function loadStockData(structureId) {
+        var seq = ++loadStockDataSeq;
         toast("조회중…", null, true);
         return window.BonsaiApi.fetchStockItems(structureId, {
             division: state.division,
             container: state.container,
         })
             .then(function (data) {
+                if (seq !== loadStockDataSeq) return null; // 이 사이에 더 최신 요청이 시작됨 — 버린다.
                 state.structureId = data.structure.structureId;
                 if (el.sync) el.sync.textContent = relativeSyncLabel(data.structure.syncedAt);
                 if (data.structure.syncedAt) {
@@ -411,6 +422,7 @@
                 return attachTypeInfo(data.items);
             })
             .then(function (items) {
+                if (seq !== loadStockDataSeq || items == null) return; // 위와 같은 이유로 버린다.
                 state.items = items;
                 // 완전히 새 목록이라 이전 스크롤 위치가 의미가 없다 — 위로 되돌린다.
                 if (el.tablewrap) el.tablewrap.scrollTop = 0;
@@ -418,6 +430,7 @@
                 toast("조회 성공");
             })
             .catch(function (err) {
+                if (seq !== loadStockDataSeq) return;
                 // 여기서 삼켜서(reject 안 하고 resolve) 끝낸다 — 그래야 이 호출을 감싼
                 // init()의 setInterval 등록이 첫 조회 실패와 무관하게 계속 진행돼서
                 // 다음 자동 새로고침 때 다시 시도된다.
