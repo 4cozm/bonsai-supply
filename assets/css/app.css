@@ -1588,6 +1588,13 @@ select.field__input {
         padding: 11px 12px;
         border-bottom: 1px solid var(--plate);
     }
+    /* 데스크톱 쪽 `.tbl tbody tr.row { height: 52px }`(가상 스크롤 행 높이 고정용, app.js
+       ROW_H와 짝) 이 이 미디어쿼리보다 셀렉터 특이도가 높아(0,2,2 > 0,2,1) 카드 모드에서도
+       그대로 이겨버린다 — 카드는 4줄(이름/부족·qty·부피/비용/바)이 52px에 다 안 들어가
+       내용이 다음 행 카드 위로 넘쳐 서로 겹쳤다. 같은 셀렉터로 다시 잡아 auto로 되돌린다. */
+    .tbl tbody tr.row {
+        height: auto;
+    }
     .tbl tbody tr:last-child {
         border-bottom: 0;
     }
@@ -1679,7 +1686,10 @@ select.field__input {
     }
     .mtbl th.mtbl__qty,
     .mtbl td.mtbl__qty {
-        width: 52px; /* 초과 경고 아이콘이 붙을 수 있어 기본보다 살짝 더 준다 */
+        /* 52px였을 때 입력(40px)만으로 이미 패딩(12px)까지 꽉 차서, 초과 경고
+           ▲ 아이콘이 붙는 순간 무조건 칸 밖으로 넘쳤다(실측 6~7px) — 아이콘 폭까지
+           들어가도록 넉넉히 올린다. */
+        width: 66px;
     }
     .mtbl th.mtbl__n:nth-child(3),
     .mtbl td.mtbl__n:nth-child(3) {
