@@ -13,8 +13,11 @@
     "use strict";
 
     var ESI_BASE = "https://esi.evetech.net/latest";
-    var CACHE_PREFIX = "bonsai:evetype:v1:";
-    var GROUP_CACHE_PREFIX = "bonsai:evegroup:v1:";
+    // v1→v2: 언어 토글 초기 구현에 경쟁 상태 버그가 있어(아래 fetchType/fetchGroupName
+    // 주석 참고) 캐시에 엉뚱한 언어의 이름이 저장된 사용자가 있다 — 버전을 올려 기존
+    // 캐시를 통째로 무효화한다(30일 TTL을 기다리게 두면 안 됨, 실사용자가 이미 겪음).
+    var CACHE_PREFIX = "bonsai:evetype:v2:";
+    var GROUP_CACHE_PREFIX = "bonsai:evegroup:v2:";
     var CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30일
 
     // 관성적으로 영문 이브 클라를 쓰는 사람도 많다 — 매니페스트를 그 클라의 Multibuy에
@@ -61,10 +64,17 @@
         }
     }
 
-    function fetchType(typeId) {
-        return fetch(
-            ESI_BASE + "/universe/types/" + typeId + "/?datasource=tranquility&language=" + getLanguage()
-        )
+    /**
+     * lang을 인자로 받는다 — getLanguage()를 여기서 다시 읽으면 안 된다. resolveTypes가
+     * 호출 시작 시점에 캐시 키로 쓸 lang을 한 번 정해 두는데, 대량 조회는 동시 실행
+     * 제한(runLimited) 탓에 큐에 오래 머물다 실제 fetch가 한참 뒤에 나간다 — 그 사이
+     * 사용자가 언어를 다시 토글하면, fetch 시점에 새로 읽은 언어로 받아온 내용이
+     * (요청을 시작할 때의) 예전 언어 캐시 키에 저장되어 캐시가 오염된다. 실제로 모듈처럼
+     * 종류가 많아 오래 걸리는 부류에서 이 문제가 재현됐다 — 탄약은 종류가 적어 늘 큐가
+     * 빨리 빠져서 우연히 안 걸렸을 뿐이다.
+     */
+    function fetchType(typeId, lang) {
+        return fetch(ESI_BASE + "/universe/types/" + typeId + "/?datasource=tranquility&language=" + lang)
             .then(function (r) {
                 if (!r.ok) throw new Error("ESI universe/types " + r.status);
                 return r.json();
@@ -74,10 +84,8 @@
             });
     }
 
-    function fetchGroupName(groupId) {
-        return fetch(
-            ESI_BASE + "/universe/groups/" + groupId + "/?datasource=tranquility&language=" + getLanguage()
-        )
+    function fetchGroupName(groupId, lang) {
+        return fetch(ESI_BASE + "/universe/groups/" + groupId + "/?datasource=tranquility&language=" + lang)
             .then(function (r) {
                 if (!r.ok) throw new Error("ESI universe/groups " + r.status);
                 return r.json();
@@ -166,7 +174,7 @@
 
         var typesDone = runLimited(toFetchTypes, TYPE_CONCURRENCY, function (id) {
             return withRetry(function () {
-                return fetchType(id);
+                return fetchType(id, lang);
             }).then(
                 function (info) {
                     writeCache(CACHE_PREFIX + lang + ":" + id, info);
@@ -199,7 +207,7 @@
 
             var groupsDone = runLimited(toFetchGroups, TYPE_CONCURRENCY, function (gid) {
                 return withRetry(function () {
-                    return fetchGroupName(gid);
+                    return fetchGroupName(gid, lang);
                 }).then(
                     function (name) {
                         writeCache(GROUP_CACHE_PREFIX + lang + ":" + gid, name);
