@@ -138,6 +138,16 @@ body {
     font: 12px/1 var(--mono);
 }
 
+.rail__sync-next {
+    color: var(--dim);
+}
+
+.rail__sync-next:not(:empty)::before {
+    content: "·";
+    margin: 0 6px;
+    opacity: 0.5;
+}
+
 .rail__pulse {
     width: 6px;
     height: 6px;
