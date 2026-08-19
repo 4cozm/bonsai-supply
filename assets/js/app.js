@@ -384,15 +384,20 @@
         });
     }
 
+    // loadFittings는 구조물 전환/자동 새로고침이 겹쳐 불릴 수 있다 — loadStockData와
+    // 같은 이유(위 주석 참고)로 번호를 매겨, 늦게 시작된 호출이 있으면 먼저 끝나도 버린다.
+    var loadFittingsSeq = 0;
+
     /**
      * 이 구조물에 저장된 피팅 전부를 받아 state.fittings에 채우고, 거기 등장하는
      * 모듈 typeId들의 이름·부피도 미리 해석해 state.fittingTypeInfo에 채운다.
-     * 실패해도 재고 조회 자체는 막지 않는다 — 피팅 기능만 못 쓸 뿐.
      * @param {string} structureId
      */
     function loadFittings(structureId) {
+        var seq = ++loadFittingsSeq;
         return window.BonsaiApi.fetchFittings(structureId)
             .then(function (list) {
+                if (seq !== loadFittingsSeq) return null; // 이 사이에 더 최신 호출이 시작됨 — 버린다.
                 var fittings = {};
                 var typeIds = [];
                 (list || []).forEach(function (f) {
@@ -408,10 +413,18 @@
                 return window.BonsaiEveTypes.resolveTypes(typeIds);
             })
             .then(function (typeInfo) {
+                if (seq !== loadFittingsSeq || typeInfo == null) return;
                 state.fittingTypeInfo = typeInfo || {};
             })
             .catch(function () {
-                // 실패해도 그대로 둔다 — 이전에 받아 둔 게 있으면 유지, 없으면 빈 채로.
+                if (seq !== loadFittingsSeq) return;
+                // item.key(typeId::itemName)엔 구조물 구분이 없어서, 조회 실패 시 이전
+                // 구조물의 피팅을 그대로 두면 다른 구조물의 피팅이 지금 구조물의 같은
+                // typeId/이름 함선에 잘못 붙을 수 있다 — "정보 없음"이 "틀린 정보"보다
+                // 안전하므로 실패하면 아예 비운다(가격처럼 "이전 값 유지"가 안전한
+                // typeId 전역 캐시와 다르다).
+                state.fittings = {};
+                state.fittingTypeInfo = {};
             });
     }
 
@@ -2832,7 +2845,12 @@
             delay = Math.max(AUTO_REFRESH_MIN_MS, untilNext);
         }
         refreshTimerId = setTimeout(function () {
-            if (state.structureId) loadStockData(state.structureId);
+            if (!state.structureId) return;
+            loadStockData(state.structureId);
+            // loadStockData와 별개로 같이 돈다 — 자동 새로고침 사이에 피팅이
+            // 추가/수정/삭제됐으면(다른 관리자가 했을 수도 있음) 매니페스트 합계가
+            // 다음 수동 조작 전까지 계속 옛 피팅 기준으로 남는 걸 막는다.
+            loadFittings(state.structureId).then(render);
         }, delay);
     }
 
