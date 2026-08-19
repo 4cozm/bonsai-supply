@@ -484,6 +484,69 @@
     // 이미 있으면 응답이 와도 조용히 버린다.
     var loadStockDataSeq = 0;
 
+    // 큰 구조물은 /items 쿼리가 5~10초 걸린다(실측: 몇천 개 아이템 30일치 집계) —
+    // 근데 백엔드가 이미 응답마다 nextSyncAt(다음 실제 동기화 예정 시각, ESI Expires
+    // 헤더 기반)을 같이 준다. 그 시각이 오기 전엔 서버 데이터가 바뀔 수 없다는
+    // 뜻이라, 행어 전환/구조물 재선택/새로고침마다 매번 무거운 쿼리를 다시 던질
+    // 필요가 없다 — division/container 조합별로 응답을 localStorage에 캐싱해 두고
+    // nextSyncAt이 지나기 전까지는 그대로 재사용한다. 별도 "버전" 개념이나 백엔드
+    // 변경 없이 이미 있는 값만 재활용한다.
+    var STOCK_CACHE_PREFIX = "bonsai:stockCache:";
+
+    function stockCacheKey(structureId, division, container) {
+        return STOCK_CACHE_PREFIX + structureId + ":" + (division == null ? "" : division) + ":" + (container || "");
+    }
+
+    // localStorage가 꺼져 있거나(사생활 보호 모드) 꽉 찼어도 캐싱 없이 그냥 매번
+    // 네트워크로 폴백해야지, 기능 자체가 깨지면 안 된다 — setupHub()의
+    // HUB_STORAGE_KEY와 같은 이유로 try/catch로 감싼다.
+    function readStockCache(structureId, division, container) {
+        try {
+            var raw = localStorage.getItem(stockCacheKey(structureId, division, container));
+            if (!raw) return null;
+            var parsed = JSON.parse(raw);
+            if (!parsed || !parsed.nextSyncAt) return null;
+            if (Date.now() >= new Date(parsed.nextSyncAt).getTime()) return null; // 다음 동기화 시각이 이미 지남 — 만료.
+            return parsed.data;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function writeStockCache(structureId, division, container, data) {
+        // nextSyncAt을 모르면(동기화 기록 없음 등) 언제 만료시킬지 알 수 없어 캐싱
+        // 자체를 안 한다 — 무기한 캐싱되는 사고를 막는다.
+        if (!data.structure.nextSyncAt) return;
+        try {
+            localStorage.setItem(
+                stockCacheKey(structureId, division, container),
+                JSON.stringify({ data: data, nextSyncAt: data.structure.nextSyncAt })
+            );
+        } catch (e) {
+            // 용량 초과 등 — 캐싱은 있으면 좋은 것뿐이라 조용히 무시.
+        }
+    }
+
+    // 목표 수량을 저장한 뒤, 캐시된 옛 target이 같은 동기화 창 안에서 다시 보이지
+    // 않도록 그 구조물의 캐시를 전부 지운다(commitTargets가 부른다) — division/
+    // container 조합별로 나뉘어 있어 어느 조합에 캐싱됐었는지 모르니 prefix로 전부
+    // 찾아 지운다.
+    function clearStockCache(structureId) {
+        try {
+            var prefix = STOCK_CACHE_PREFIX + structureId + ":";
+            var toRemove = [];
+            for (var i = 0; i < localStorage.length; i++) {
+                var key = localStorage.key(i);
+                if (key && key.indexOf(prefix) === 0) toRemove.push(key);
+            }
+            toRemove.forEach(function (key) {
+                localStorage.removeItem(key);
+            });
+        } catch (e) {
+            // 무시 — 최악의 경우 다음 동기화 시각까지만 옛 값이 보인다.
+        }
+    }
+
     /**
      * 구조물 하나의 재고를 불러와 state.items를 채우고 다시 그린다. 최초 로드와
      * 자동 새로고침(scheduleAutoRefresh)이 공유하는 경로다.
@@ -491,11 +554,22 @@
      */
     function loadStockData(structureId) {
         var seq = ++loadStockDataSeq;
-        toast("조회중…", null, true);
-        return window.BonsaiApi.fetchStockItems(structureId, {
-            division: state.division,
-            container: state.container,
-        })
+        var division = state.division;
+        var container = state.container;
+        var cached = readStockCache(structureId, division, container);
+        var dataPromise = cached
+            ? Promise.resolve(cached)
+            : (function () {
+                  toast("조회중…", null, true);
+                  return window.BonsaiApi.fetchStockItems(structureId, {
+                      division: division,
+                      container: container,
+                  }).then(function (data) {
+                      writeStockCache(structureId, division, container, data);
+                      return data;
+                  });
+              })();
+        return dataPromise
             .then(function (data) {
                 if (seq !== loadStockDataSeq) return null; // 이 사이에 더 최신 요청이 시작됨 — 버린다.
                 state.structureId = data.structure.structureId;
@@ -2045,6 +2119,11 @@
                     failed++;
                 }
             });
+
+            // 방금 바꾼 target이 같은 동기화 창 안에서 캐시된 옛 값에 가려지지 않도록
+            // 지운다 — target은 division 필터와 무관하게 전체에 걸쳐 보이는 값이라
+            // 이 구조물의 캐시 전부(행어 조합 불문)를 지워야 한다.
+            if (succeeded > 0) clearStockCache(state.structureId);
 
             saveModal.root.close();
             render();
