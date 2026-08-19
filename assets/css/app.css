@@ -522,6 +522,24 @@ select.field__input {
 .tbl tbody tr.row:hover .name {
     color: var(--teal);
 }
+.name__wrap {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+}
+.name__wrap .name {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+/* 목표는 있는데 피팅이 아직 없는 커스텀명 함선에 붙는 표시 — 이름은 그대로 두고
+   아이콘에만 호버 툴팁("피팅 미등록")을 단다. */
+.name__fitwarn {
+    flex: none;
+    display: inline-flex;
+    color: var(--amber);
+    cursor: help;
+}
 
 .row {
     cursor: pointer;

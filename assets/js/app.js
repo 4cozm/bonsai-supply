@@ -1582,6 +1582,9 @@
         // 이름 + 그룹
         var tdName = document.createElement("td");
         tdName.className = "tbl__item";
+        var nameWrap = document.createElement("span");
+        nameWrap.className = "name__wrap";
+
         var name = document.createElement("button");
         name.type = "button";
         name.className = "name";
@@ -1590,10 +1593,28 @@
         name.addEventListener("click", function () {
             openDetail(item);
         });
+        nameWrap.appendChild(name);
+
+        // 목표를 잡아둔 커스텀명 함선인데 피팅이 아직 없으면 표시 — 그냥 "미확인
+        // 함선"이 아니라 관리 대상으로 등록해 놓고 피팅만 안 넣은 경우를 놓치기 쉬워서다.
+        // 이름 자체는 안 건드리고, 아이콘에 따로 title을 달아 호버로만 알려준다.
+        if (item.itemName && !hasNoTarget(item) && !state.fittings[item.key]) {
+            var fitWarn = document.createElement("span");
+            fitWarn.className = "name__fitwarn";
+            fitWarn.title = "피팅 미등록";
+            fitWarn.innerHTML =
+                '<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true">' +
+                '<circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" stroke-width="1.3"/>' +
+                '<line x1="8" y1="4.3" x2="8" y2="9.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>' +
+                '<circle cx="8" cy="11.3" r="0.85" fill="currentColor"/>' +
+                "</svg>";
+            nameWrap.appendChild(fitWarn);
+        }
+
         var group = document.createElement("span");
         group.className = "group";
         group.textContent = item.group || "";
-        tdName.appendChild(name);
+        tdName.appendChild(nameWrap);
         tdName.appendChild(group);
         tr.appendChild(tdName);
 
