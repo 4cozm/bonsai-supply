@@ -53,6 +53,12 @@
         division: null, // 선택한 행어 번호(1-7). null이면 구조물 전체(필터 없음).
         container: null, // division 안 특정 컨테이너로 더 좁혔을 때만 값이 있다.
         firstPaint: true,
+        // item.key(typeId+itemName) → { items:[{typeId,qty}], updatedAt } — 커스텀명
+        // 있는 함선에 저장된 피팅. 구조물 로드 시 한 번만 받는다(loadFittings 참고).
+        fittings: {},
+        // 피팅 모듈 typeId → {name, group, unitVolume} — eveTypes.js resolveTypes
+        // 결과 캐시. 모달/매니페스트에서 모듈 이름·부피를 보여주는 데 쓴다.
+        fittingTypeInfo: {},
     };
 
     var el = {
@@ -252,12 +258,38 @@
         else state.manifestQty[item.key] = clamped;
     }
 
+    /** 함선 한 대에 저장된 피팅 모듈들의 typeId당 단가 조회 — pricing.js 배치에 얹혀 온다. */
+    function fittingModulePrice(typeId) {
+        return state.unitPrices["fitmod:" + typeId] || 0;
+    }
+
+    /** 함선 한 대의 피팅에 들어간 총 부피(모듈 부피 × 수량 합). 피팅 없으면 0. */
+    function fittingUnitVolume(item) {
+        var fit = state.fittings[item.key];
+        if (!fit) return 0;
+        return fit.items.reduce(function (sum, row) {
+            var info = state.fittingTypeInfo[row.typeId] || {};
+            return sum + (info.unitVolume || 0) * row.qty;
+        }, 0);
+    }
+
+    /** 함선 한 대의 피팅에 들어간 총 비용. 가격 모르는 모듈은 0으로 친다(값을 지어내지 않는다는 앱 전체 원칙과 동일). */
+    function fittingUnitCost(item) {
+        var fit = state.fittings[item.key];
+        if (!fit) return 0;
+        return fit.items.reduce(function (sum, row) {
+            return sum + fittingModulePrice(row.typeId) * row.qty;
+        }, 0);
+    }
+
+    // 함선을 매니페스트에 N척 담으면 그 함선의 피팅 부피/비용도 N배로 같이 실린다 —
+    // 헐값만으로는 실제 운송 부담을 과소평가하게 된다(사용자 확인).
     function manifestLineVolume(item) {
-        return manifestQtyOf(item) * (item.unitVolume || 0);
+        return manifestQtyOf(item) * ((item.unitVolume || 0) + fittingUnitVolume(item));
     }
 
     function manifestLineCost(item) {
-        return manifestQtyOf(item) * unitPrice(item);
+        return manifestQtyOf(item) * (unitPrice(item) + fittingUnitCost(item));
     }
 
     function unitPrice(item) {
@@ -340,13 +372,46 @@
      * 매 새로고침마다 다시 받으면 사용자가 골라 둔 행어 선택이 계속 리셋된다.
      */
     function loadStructureData(structureId) {
-        return window.BonsaiApi.fetchDivisions(structureId)
-            .then(setupDivisionSelect)
-            .catch(function () {
-                // 행어 목록 조회 실패해도 전체 재고는 그대로 보여준다 — 필터 기능만 못 쓸 뿐.
+        return Promise.all([
+            window.BonsaiApi.fetchDivisions(structureId)
+                .then(setupDivisionSelect)
+                .catch(function () {
+                    // 행어 목록 조회 실패해도 전체 재고는 그대로 보여준다 — 필터 기능만 못 쓸 뿐.
+                }),
+            loadFittings(structureId),
+        ]).then(function () {
+            return loadStockData(structureId);
+        });
+    }
+
+    /**
+     * 이 구조물에 저장된 피팅 전부를 받아 state.fittings에 채우고, 거기 등장하는
+     * 모듈 typeId들의 이름·부피도 미리 해석해 state.fittingTypeInfo에 채운다.
+     * 실패해도 재고 조회 자체는 막지 않는다 — 피팅 기능만 못 쓸 뿐.
+     * @param {string} structureId
+     */
+    function loadFittings(structureId) {
+        return window.BonsaiApi.fetchFittings(structureId)
+            .then(function (list) {
+                var fittings = {};
+                var typeIds = [];
+                (list || []).forEach(function (f) {
+                    fittings[f.typeId + "::" + f.itemName] = {
+                        items: f.items,
+                        updatedAt: f.updatedAt,
+                    };
+                    f.items.forEach(function (row) {
+                        typeIds.push(row.typeId);
+                    });
+                });
+                state.fittings = fittings;
+                return window.BonsaiEveTypes.resolveTypes(typeIds);
             })
-            .then(function () {
-                return loadStockData(structureId);
+            .then(function (typeInfo) {
+                state.fittingTypeInfo = typeInfo || {};
+            })
+            .catch(function () {
+                // 실패해도 그대로 둔다 — 이전에 받아 둔 게 있으면 유지, 없으면 빈 채로.
             });
     }
 
@@ -516,9 +581,33 @@
         });
     }
 
+    /**
+     * 저장된 모든 피팅에 등장하는 모듈 typeId를 pricing.js 배치 조회용 형태로 모은다.
+     * key를 typeId 기준 하나로 통일한다(같은 모듈이 여러 함선/피팅에 나와도 시세는
+     * 하나) — "fitmod:" 접두어로 일반 재고 품목의 key(typeId+itemName)와 안 겹치게 한다.
+     */
+    function fittingPriceItems() {
+        var seen = Object.create(null);
+        var out = [];
+        Object.keys(state.fittings).forEach(function (fitKey) {
+            state.fittings[fitKey].items.forEach(function (row) {
+                if (seen[row.typeId]) return;
+                seen[row.typeId] = true;
+                var info = state.fittingTypeInfo[row.typeId] || {};
+                out.push({
+                    key: "fitmod:" + row.typeId,
+                    typeId: row.typeId,
+                    unitVolume: info.unitVolume || 0,
+                });
+            });
+        });
+        return out;
+    }
+
     function loadPrices() {
         if (!window.BonsaiPricing) return;
-        window.BonsaiPricing.fetchPrices(state.items, state.hub).then(function (result) {
+        var items = state.items.concat(fittingPriceItems());
+        window.BonsaiPricing.fetchPrices(items, state.hub).then(function (result) {
             // 실패하면 이전에 받아 둔 값(있다면)을 지우지 않는다 — 나중에 주기적 재조회를
             // 붙였을 때, 일시적 실패로 화면의 모든 비용이 "—"로 사라지는 것보다 낫다.
             // 첫 로드 실패라면 어차피 아직 아무 값도 없었으니 차이가 없다.
@@ -1035,6 +1124,13 @@
         presets: [].slice.call(document.querySelectorAll("[data-range]")),
         dateFrom: document.querySelector("[data-range-from]"),
         dateTo: document.querySelector("[data-range-to]"),
+        fittingSection: document.querySelector("[data-modal-fitting]"),
+        fittingToggle: document.querySelector("[data-fitting-toggle]"),
+        fittingChevron: document.querySelector("[data-fitting-chevron]"),
+        fittingToggleLabel: document.querySelector("[data-fitting-toggle-label]"),
+        fittingItems: document.querySelector("[data-fitting-items]"),
+        fittingEdit: document.querySelector("[data-fitting-edit]"),
+        fittingDelete: document.querySelector("[data-fitting-delete]"),
     };
     modal.deltaLabel = modal.delta.previousElementSibling; // "24시간 변화" dt
 
@@ -1239,6 +1335,7 @@
         modal.target.textContent = hasNoTarget(item) ? "미설정" : num(item.target);
         modal.short.textContent = short ? "−" + num(short) : hasNoTarget(item) ? "목표없음" : "충족";
         modal.short.className = "stat__v " + (short ? "short" : "ok");
+        renderModalFitting(item);
 
         // 차트는 모달을 연 뒤에 그린다 — 닫힌 dialog 는 폭이 0이라 viewBox 를 맞출 수 없다.
         modal.root.showModal();
@@ -1248,6 +1345,68 @@
         // 받아 오므로(on-demand) 여기서 fetch가 끝난 뒤에 그린다.
         setPreset(item, "7").then(function () {
             drawChart(item);
+        });
+    }
+
+    /**
+     * 모달 하단 피팅 섹션을 채운다. 피팅은 커스텀명 있는 함선 전용이라 일반
+     * 품목이면 섹션 자체를 숨긴다.
+     */
+    function renderModalFitting(item) {
+        if (!item.itemName) {
+            modal.fittingSection.hidden = true;
+            return;
+        }
+        modal.fittingSection.hidden = false;
+        modal.fittingItems.hidden = true;
+        modal.fittingToggle.setAttribute("aria-expanded", "false");
+
+        var fit = state.fittings[item.key];
+        modal.fittingDelete.hidden = !fit;
+        modal.fittingEdit.textContent = fit ? "수정" : "피팅 등록";
+
+        if (!fit) {
+            modal.fittingToggle.disabled = true;
+            modal.fittingToggleLabel.textContent = "피팅 미등록";
+            modal.fittingItems.textContent = "";
+            return;
+        }
+        modal.fittingToggle.disabled = false;
+        modal.fittingToggleLabel.textContent = "피팅 " + fit.items.length + "종";
+        renderFittingItemsList(modal.fittingItems, fit.items);
+    }
+
+    /** 피팅 아이템 목록(typeId/qty)을 읽기 전용 행으로 그린다 — 모달·매니페스트 공용. */
+    function renderFittingItemsList(ul, items) {
+        ul.textContent = "";
+        items.forEach(function (row) {
+            var info = state.fittingTypeInfo[row.typeId] || {};
+            var li = document.createElement("li");
+            li.className = "fitting__item";
+
+            var img = document.createElement("img");
+            img.className = "fitting__item-icon";
+            img.width = 22;
+            img.height = 22;
+            img.alt = "";
+            img.src = ICON_BASE + row.typeId + "/icon?size=32";
+            img.addEventListener("error", function once() {
+                img.removeEventListener("error", once);
+                img.src = ICON_FALLBACK;
+            });
+            li.appendChild(img);
+
+            var name = document.createElement("span");
+            name.className = "fitting__item-name";
+            name.textContent = info.name || "typeId " + row.typeId;
+            li.appendChild(name);
+
+            var qty = document.createElement("span");
+            qty.className = "fitting__item-qty";
+            qty.textContent = "×" + num(row.qty);
+            li.appendChild(qty);
+
+            ul.appendChild(li);
         });
     }
 
@@ -1525,13 +1684,34 @@
     }
 
     function buildManifestRow(item) {
+        var frag = document.createDocumentFragment();
         var tr = document.createElement("tr");
         tr.className = "mrow";
+
+        var fit = state.fittings[item.key];
+        var fitRow = null; // 피팅 있으면 아래서 채운다(펼치기 토글 대상).
 
         var tdItem = document.createElement("td");
         tdItem.className = "mtbl__item";
         var wrap = document.createElement("div");
         wrap.className = "mrow__item";
+
+        if (fit) {
+            var toggle = document.createElement("button");
+            toggle.type = "button";
+            toggle.className = "mrow__toggle";
+            toggle.textContent = "▾";
+            toggle.setAttribute("aria-label", item.name + " 피팅 펼치기/접기");
+            toggle.setAttribute("aria-expanded", "false");
+            toggle.addEventListener("click", function () {
+                var open = fitRow.hidden;
+                fitRow.hidden = !open;
+                toggle.setAttribute("aria-expanded", open ? "true" : "false");
+                toggle.classList.toggle("is-open", open);
+            });
+            wrap.appendChild(toggle);
+        }
+
         var img = document.createElement("img");
         img.className = "micon";
         img.width = 20;
@@ -1620,7 +1800,23 @@
         tdDrop.appendChild(drop);
         tr.appendChild(tdDrop);
 
-        return tr;
+        frag.appendChild(tr);
+
+        if (fit) {
+            fitRow = document.createElement("tr");
+            fitRow.className = "mrow__fit";
+            fitRow.hidden = true;
+            var fitTd = document.createElement("td");
+            fitTd.colSpan = 5;
+            var fitList = document.createElement("ul");
+            fitList.className = "fitting__items";
+            renderFittingItemsList(fitList, fit.items);
+            fitTd.appendChild(fitList);
+            fitRow.appendChild(fitTd);
+            frag.appendChild(fitRow);
+        }
+
+        return frag;
     }
 
     function renderManifest() {
@@ -2015,6 +2211,213 @@
         toast(num(added.length) + "개를 목록에 추가했습니다.");
     }
 
+    /* ── 피팅 붙여넣기 모달 ─────────────────────────────── */
+    // 품목 추가 모달(add-modal)과 거의 같은 흐름이다: 붙여넣기 → 이브에서 확인 →
+    // 못 찾은 이름은 걸러내거나 고치게 하고 → 확정. 다른 점은 파서(parseEft)와
+    // 저장 대상(피팅 아이템 typeId/qty, 백엔드 ShipFitting)뿐이라 같은 CSS 클래스를
+    // 그대로 재사용한다(add__body/add__input/add__list/add__row 등).
+
+    var fittingModal = {
+        root: document.querySelector("[data-fitting-modal]"),
+        title: document.querySelector("[data-fitting-modal-title]"),
+        text: document.querySelector("[data-fitting-text]"),
+        check: document.querySelector("[data-fitting-check]"),
+        status: document.querySelector("[data-fitting-status]"),
+        list: document.querySelector("[data-fitting-list]"),
+        confirm: document.querySelector("[data-fitting-confirm]"),
+    };
+
+    // 확인 결과. { typeId, name, language, qty } 또는 { name, missing: true }
+    var fittingRows = [];
+    // 지금 등록/수정 중인 함선 item(typeId/itemName/key 필요) — openFittingModal이 잡는다.
+    var fittingModalTarget = null;
+
+    function setFittingModalStatus(text, tone) {
+        fittingModal.status.hidden = !text;
+        fittingModal.status.textContent = text || "";
+        if (tone) fittingModal.status.setAttribute("data-tone", tone);
+        else fittingModal.status.removeAttribute("data-tone");
+    }
+
+    function renderFittingModalRows() {
+        fittingModal.list.textContent = "";
+
+        fittingRows.forEach(function (row, index) {
+            var li = document.createElement("li");
+            li.className = "add__row" + (row.missing ? " is-missing" : "");
+
+            if (row.missing) {
+                var mark = document.createElement("span");
+                mark.className = "add__icon";
+                li.appendChild(mark);
+            } else {
+                var img = document.createElement("img");
+                img.className = "add__icon";
+                img.width = 28;
+                img.height = 28;
+                img.alt = "";
+                img.src = ICON_BASE + row.typeId + "/icon?size=64";
+                img.addEventListener("error", function once() {
+                    img.removeEventListener("error", once);
+                    img.src = ICON_FALLBACK;
+                });
+                li.appendChild(img);
+            }
+
+            var name = document.createElement("span");
+            name.className = "add__name";
+            name.textContent = row.name;
+            var meta = document.createElement("span");
+            meta.className = "add__meta";
+            meta.textContent = row.missing
+                ? "이브에서 찾을 수 없는 이름입니다"
+                : "#" + row.typeId + " · " + (row.language === "ko" ? "한글" : "영문");
+            name.appendChild(meta);
+            li.appendChild(name);
+
+            if (!row.missing) {
+                var qty = document.createElement("input");
+                qty.type = "number";
+                qty.min = "1";
+                qty.className = "add__qty";
+                qty.value = String(row.qty);
+                qty.setAttribute("aria-label", row.name + " 수량");
+                qty.addEventListener("change", function () {
+                    var v = parseInt(qty.value, 10);
+                    row.qty = isNaN(v) || v < 1 ? 1 : v;
+                });
+                li.appendChild(qty);
+            }
+
+            var drop = document.createElement("button");
+            drop.type = "button";
+            drop.className = "add__drop";
+            drop.textContent = "✕";
+            drop.setAttribute("aria-label", row.name + " 목록에서 빼기");
+            drop.addEventListener("click", function () {
+                fittingRows.splice(index, 1);
+                renderFittingModalRows();
+            });
+            li.appendChild(drop);
+
+            fittingModal.list.appendChild(li);
+        });
+
+        var missing = fittingRows.filter(function (r) {
+            return r.missing;
+        }).length;
+        var ok = fittingRows.length - missing;
+        fittingModal.confirm.disabled = ok === 0 || missing > 0;
+
+        if (missing) {
+            setFittingModalStatus(
+                missing + "개를 찾을 수 없습니다. 이름을 고치거나 목록에서 빼야 저장할 수 있습니다.",
+                "warn"
+            );
+        } else if (ok) {
+            setFittingModalStatus(ok + "종을 확인했습니다.");
+        } else {
+            setFittingModalStatus("");
+        }
+    }
+
+    function checkFittingText() {
+        var parsed = window.BonsaiEsi.parseEft(fittingModal.text.value);
+        if (!parsed.length) {
+            fittingRows = [];
+            renderFittingModalRows();
+            setFittingModalStatus("붙여넣은 피팅이 비어 있습니다.", "warn");
+            return;
+        }
+
+        fittingModal.check.disabled = true;
+        setFittingModalStatus("이브에서 확인하는 중…");
+
+        var names = parsed.map(function (p) {
+            return p.name;
+        });
+
+        window.BonsaiEsi.resolveNames(names).then(
+            function (res) {
+                fittingRows = parsed.map(function (p) {
+                    var hit = res.found[p.name.toLowerCase()];
+                    if (!hit) return { name: p.name, missing: true };
+                    return { typeId: hit.id, name: hit.name, language: hit.language, qty: p.qty };
+                });
+                fittingModal.check.disabled = false;
+                renderFittingModalRows();
+            },
+            function (err) {
+                fittingModal.check.disabled = false;
+                setFittingModalStatus("이브에 연결하지 못했습니다: " + (err && err.message), "warn");
+            }
+        );
+    }
+
+    function openFittingModal(item) {
+        fittingModalTarget = item;
+        fittingRows = [];
+        fittingModal.text.value = "";
+        renderFittingModalRows();
+        setFittingModalStatus("");
+        fittingModal.title.textContent = item.name + " 피팅";
+        fittingModal.root.showModal();
+        fittingModal.text.focus();
+    }
+
+    function commitFitting() {
+        var rows = fittingRows.filter(function (r) {
+            return !r.missing;
+        });
+        if (!rows.length || !fittingModalTarget) return;
+
+        var item = fittingModalTarget;
+        fittingModal.confirm.disabled = true;
+        window.BonsaiApi.saveFitting(state.structureId, {
+            typeId: item.typeId,
+            itemName: item.itemName,
+            items: rows.map(function (r) {
+                return { typeId: r.typeId, qty: r.qty };
+            }),
+        })
+            .then(function () {
+                return loadFittings(state.structureId);
+            })
+            .then(function () {
+                fittingModal.root.close();
+                fittingModal.confirm.disabled = false;
+                if (openItem && openItem.key === item.key) renderModalFitting(openItem);
+                loadPrices();
+                render();
+                toast("피팅을 저장했습니다.");
+            })
+            .catch(function (err) {
+                fittingModal.confirm.disabled = false;
+                toast(err.message || "피팅 저장 실패", "warn");
+            });
+    }
+
+    function deleteFitting(item) {
+        if (!window.confirm(item.name + "의 피팅을 삭제할까요?")) return;
+        window.BonsaiApi.saveFitting(state.structureId, {
+            typeId: item.typeId,
+            itemName: item.itemName,
+            items: [],
+        })
+            .then(function () {
+                return loadFittings(state.structureId);
+            })
+            .then(function () {
+                if (openItem && openItem.key === item.key) renderModalFitting(openItem);
+                loadPrices();
+                render();
+                toast("피팅을 삭제했습니다.");
+            })
+            .catch(function (err) {
+                toast(err.message || "피팅 삭제 실패", "warn");
+            });
+    }
+
     /* ── 토스트 ─────────────────────────────────────────── */
 
     var toastTimer = null;
@@ -2375,8 +2778,28 @@
             addModal.root.close();
         });
     });
+
+    modal.fittingToggle.addEventListener("click", function () {
+        var open = modal.fittingItems.hidden;
+        modal.fittingItems.hidden = !open;
+        modal.fittingToggle.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+    modal.fittingEdit.addEventListener("click", function () {
+        if (openItem) openFittingModal(openItem);
+    });
+    modal.fittingDelete.addEventListener("click", function () {
+        if (openItem) deleteFitting(openItem);
+    });
+    fittingModal.check.addEventListener("click", checkFittingText);
+    fittingModal.confirm.addEventListener("click", commitFitting);
+    document.querySelectorAll("[data-fitting-cancel]").forEach(function (b) {
+        b.addEventListener("click", function () {
+            fittingModal.root.close();
+        });
+    });
+
     // 백드롭 클릭으로 닫기
-    [saveModal.root, addModal.root].forEach(function (d) {
+    [saveModal.root, addModal.root, fittingModal.root].forEach(function (d) {
         d.addEventListener("click", function (e) {
             if (e.target === d) d.close();
         });
