@@ -143,6 +143,36 @@
         });
     }
 
+    /**
+     * 이 구조물에 저장된 피팅 전부(커스텀명 있는 함선만 대상이라 개수가 적다) —
+     * 구조물 로드 시 한 번만 받아서 모달/매니페스트 토글이 재사용한다.
+     * @param {string} structureId
+     * @returns {Promise<{typeId:number, itemName:string, items:{typeId:number,qty:number}[], updatedAt:string}[]>}
+     */
+    function fetchFittings(structureId) {
+        return get("/v1/stock/structures/" + encodeURIComponent(structureId) + "/fittings").then(
+            function (res) {
+                if (!res.ok) throw new Error("피팅 목록 조회 실패 (HTTP " + res.status + ")");
+                return res.body.fittings;
+            }
+        );
+    }
+
+    /**
+     * 피팅 저장/삭제. items가 빈 배열이면 서버가 그 함선의 피팅 자체를 지운다.
+     * @param {string} structureId
+     * @param {{typeId:number, itemName:string, items:{typeId:number,qty:number}[]}} payload
+     * @returns {Promise<void>}
+     */
+    function saveFitting(structureId, payload) {
+        return patch(
+            "/v1/stock/structures/" + encodeURIComponent(structureId) + "/fittings",
+            payload
+        ).then(function (res) {
+            if (!res.ok) throw new Error("피팅 저장 실패 (HTTP " + res.status + ")");
+        });
+    }
+
     window.BonsaiApi = {
         API_BASE: API_BASE,
         checkAuth: checkAuth,
@@ -151,5 +181,7 @@
         fetchStockItems: fetchStockItems,
         fetchItemHistory: fetchItemHistory,
         saveTarget: saveTarget,
+        fetchFittings: fetchFittings,
+        saveFitting: saveFitting,
     };
 })();

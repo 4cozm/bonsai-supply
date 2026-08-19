@@ -62,6 +62,59 @@
         return out;
     }
 
+    /**
+     * EFT 붙여넣기(피팅) 텍스트를 파싱한다. parseLines와 달리 슬롯이 빈 줄로만
+     * 구분되고 수량 표기가 없는 EFT 포맷 전용이다 — 이 앱은 피팅을 슬롯별이 아니라
+     * "몇 종 몇 개"로만 보여주기로 했으므로 슬롯 구분 자체를 하지 않는다.
+     *
+     * 규칙: 첫 줄이 "[...]" 헤더(예: "[Ishtar, 이름]")면 버린다 · 빈 줄은 구간
+     * 구분자일 뿐이라 무시한다 · "[...]" 로 시작하는 줄(빈 슬롯 표시 등)도 무시한다 ·
+     * "이름, 장전탄약"처럼 콤마가 있으면 둘로 나눠 각각 센다 · "이름 xN"이면 그
+     * 수량으로, 아니면 수량 1 · 같은 이름이 여러 줄 나오면(모듈 반복 장착) 합산한다.
+     *
+     * @returns {Array<{name: string, qty: number}>}
+     */
+    function parseEft(text) {
+        var lines = String(text || "").split(/\r?\n/);
+        if (lines.length && /^\s*\[.*\]\s*$/.test(lines[0])) lines.shift();
+
+        var qtyByKey = Object.create(null);
+        var nameByKey = Object.create(null);
+        var order = [];
+
+        function add(name, qty) {
+            name = name.trim();
+            if (!name) return;
+            var key = name.toLowerCase();
+            if (!(key in qtyByKey)) {
+                qtyByKey[key] = 0;
+                nameByKey[key] = name;
+                order.push(key);
+            }
+            qtyByKey[key] += qty;
+        }
+
+        lines.forEach(function (raw) {
+            var line = raw.trim();
+            if (!line || /^\[.*\]$/.test(line)) return;
+
+            if (line.indexOf(",") !== -1) {
+                line.split(",").forEach(function (p) {
+                    add(p, 1);
+                });
+                return;
+            }
+
+            var m = line.match(/^(.*?)\s+x(\d+)$/i);
+            if (m) add(m[1], parseInt(m[2], 10));
+            else add(line, 1);
+        });
+
+        return order.map(function (key) {
+            return { name: nameByKey[key], qty: qtyByKey[key] };
+        });
+    }
+
     function chunk(list, size) {
         var out = [];
         for (var i = 0; i < list.length; i += size) out.push(list.slice(i, i + size));
@@ -130,5 +183,5 @@
         });
     }
 
-    window.BonsaiEsi = { parseLines: parseLines, resolveNames: resolveNames };
+    window.BonsaiEsi = { parseLines: parseLines, resolveNames: resolveNames, parseEft: parseEft };
 })();

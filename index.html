@@ -338,6 +338,26 @@
                 <div class="chart" data-modal-chart></div>
                 <figcaption class="modal__cap" data-modal-cap></figcaption>
             </figure>
+
+            <section class="fitting" data-modal-fitting hidden>
+                <div class="fitting__head">
+                    <button class="fitting__toggle" type="button" data-fitting-toggle disabled>
+                        <span class="fitting__chevron" data-fitting-chevron aria-hidden="true"
+                            >▾</span
+                        >
+                        <span data-fitting-toggle-label>피팅 미등록</span>
+                    </button>
+                    <div class="fitting__actions">
+                        <button class="btn btn--ghost" type="button" data-fitting-edit>
+                            피팅 등록
+                        </button>
+                        <button class="btn btn--ghost" type="button" data-fitting-delete hidden>
+                            삭제
+                        </button>
+                    </div>
+                </div>
+                <ul class="fitting__items" data-fitting-items hidden></ul>
+            </section>
         </dialog>
 
         <dialog class="modal modal--narrow" data-omakase-modal aria-labelledby="omakase-title">
@@ -421,6 +441,44 @@
             <footer class="modal__foot">
                 <button class="btn btn--ghost" type="button" data-add-cancel>취소</button>
                 <button class="btn" type="button" data-add-confirm disabled>목록에 추가</button>
+            </footer>
+        </dialog>
+
+        <dialog class="modal" data-fitting-modal aria-labelledby="fitting-modal-title">
+            <header class="modal__head">
+                <div class="modal__id">
+                    <h2 class="modal__name" id="fitting-modal-title" data-fitting-modal-title>
+                        피팅 붙여넣기
+                    </h2>
+                    <p class="modal__group">
+                        이브 피팅 창에서 "클립보드에 복사"한 텍스트를 그대로 붙여넣으세요.
+                    </p>
+                </div>
+                <button class="modal__x" type="button" data-fitting-cancel aria-label="닫기">
+                    ✕
+                </button>
+            </header>
+
+            <div class="add__body">
+                <label class="add__field">
+                    <span class="field__label">EFT 붙여넣기</span>
+                    <textarea
+                        class="add__input"
+                        data-fitting-text
+                        rows="10"
+                        spellcheck="false"
+                        placeholder="[Ishtar, 이름]&#10;Damage Control II&#10;Gyrostabilizer II&#10;..."
+                    ></textarea>
+                </label>
+                <button class="btn btn--ghost" type="button" data-fitting-check>이브에서 확인</button>
+
+                <p class="add__status" data-fitting-status hidden></p>
+                <ul class="add__list" data-fitting-list></ul>
+            </div>
+
+            <footer class="modal__foot">
+                <button class="btn btn--ghost" type="button" data-fitting-cancel>취소</button>
+                <button class="btn" type="button" data-fitting-confirm disabled>피팅 저장</button>
             </footer>
         </dialog>
 

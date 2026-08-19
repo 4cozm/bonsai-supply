@@ -871,6 +871,37 @@ select.field__input {
     min-width: 0;
 }
 
+.mrow__toggle {
+    flex: none;
+    width: 14px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--dim);
+    font-size: 10px;
+    line-height: 1;
+    cursor: pointer;
+    transition: transform 0.15s;
+}
+.mrow__toggle.is-open {
+    transform: rotate(-90deg);
+}
+.mrow__toggle:hover {
+    color: var(--frost);
+}
+
+.mrow__fit td {
+    padding: 2px 10px 10px 34px;
+    background: var(--void);
+}
+.mrow__fit .fitting__items {
+    margin: 0;
+    border-top: 0;
+}
+.mrow__fit .fitting__item {
+    padding: 4px 0;
+}
+
 .micon {
     flex: none;
     width: 20px;
@@ -1176,6 +1207,93 @@ select.field__input {
     margin: 10px 0 0;
     color: var(--dim);
     font: 11px/1.5 var(--mono);
+}
+
+/* ── 함선 피팅(모달 하단) ──────────────────────────────── */
+
+.fitting {
+    padding: 12px 16px 16px;
+    border-top: 1px solid var(--edge);
+}
+
+.fitting__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.fitting__toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--dim);
+    font: 600 12px/1.2 var(--mono);
+    cursor: pointer;
+}
+.fitting__toggle:disabled {
+    cursor: default;
+    opacity: 0.6;
+}
+.fitting__toggle:not(:disabled):hover {
+    color: var(--frost);
+}
+
+.fitting__chevron {
+    display: inline-block;
+    transition: transform 0.15s;
+}
+.fitting__toggle[aria-expanded="true"] .fitting__chevron {
+    transform: rotate(-90deg);
+}
+
+.fitting__actions {
+    display: flex;
+    gap: 6px;
+    flex: none;
+}
+.fitting__actions .btn {
+    padding: 5px 10px;
+    font-size: 11px;
+}
+
+.fitting__items {
+    margin: 10px 0 0;
+    padding: 0;
+    list-style: none;
+    border-top: 1px solid var(--plate);
+}
+
+.fitting__item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--plate);
+    font: 12.5px/1.4 var(--mono);
+}
+
+.fitting__item-icon {
+    flex: none;
+    width: 22px;
+    height: 22px;
+    border: 1px solid var(--edge);
+    background: var(--void);
+}
+
+.fitting__item-name {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.fitting__item-qty {
+    flex: none;
+    color: var(--dim);
+    font-variant-numeric: tabular-nums;
 }
 
 /* ── 저장 대기 바 ──────────────────────────────────────── */
