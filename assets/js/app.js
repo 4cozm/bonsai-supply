@@ -2743,7 +2743,12 @@
             var containerPart = sepIdx === -1 ? "" : raw.slice(sepIdx + 2);
             state.division = divisionPart ? Number(divisionPart) : null;
             state.container = containerPart || null;
-            if (state.structureId) loadStockData(state.structureId);
+            // state.structureId는 재고 API 응답이 와야 채워진다(loadStockData 참고) —
+            // 그 전에(무거운 재고 조회가 아직 도는 중에) 행어를 바꾸면 이 값이 아직
+            // null이라 재조회 자체가 안 나가고, 먼저 나가 있던 "전체" 요청이 뒤늦게
+            // 도착해 방금 고른 행어를 무시한 채 렌더링해 버렸다(실측 확인된 버그) —
+            // el.hangar.value는 select DOM 값이라 응답을 안 기다리고 항상 즉시 맞다.
+            if (el.hangar && el.hangar.value) loadStockData(el.hangar.value);
         });
     }
 
